@@ -1,0 +1,146 @@
+/**
+ * Preload 脚本
+ *
+ * 通过 contextBridge 安全地将 API 暴露给渲染进程
+ */
+
+import { contextBridge, ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../shared/types';
+import type {
+  AppConfig,
+  Conversation,
+  Message,
+  A2AResponse,
+  A2AResult,
+  A2AError,
+  AgentCard,
+  AuthConfig,
+  JsonRpcLogEntry,
+} from '../shared/types';
+
+/**
+ * 暴露给渲染进程的 API 接口
+ */
+export interface ElectronAPI {
+  // 配置管理
+  getConfig: () => Promise<AppConfig>;
+  setConfig: (updates: Partial<AppConfig>) => Promise<AppConfig>;
+
+  // 对话管理
+  listConversations: () => Promise<Conversation[]>;
+  createConversation: (title: string, endpoint: string) => Promise<Conversation>;
+  deleteConversation: (id: string) => Promise<void>;
+  updateConversation: (id: string, updates: Partial<Conversation>) => Promise<Conversation | null>;
+
+  // 消息管理
+  getMessages: (conversationId: string) => Promise<Message[]>;
+  saveMessage: (conversationId: string, message: Message) => Promise<void>;
+
+  // Debug Logs 管理
+  getDebugLogs: (conversationId: string) => Promise<JsonRpcLogEntry[]>;
+  saveDebugLogs: (conversationId: string, logs: JsonRpcLogEntry[]) => Promise<void>;
+  saveDebugLog: (conversationId: string, log: JsonRpcLogEntry) => Promise<void>;
+  clearDebugLogs: (conversationId: string) => Promise<void>;
+
+  // A2A 通信（支持可选的认证配置）
+  a2aSend: (endpoint: string, message: string, conversationId: string, auth?: AuthConfig) => Promise<A2AResponse>;
+  a2aStream: (endpoint: string, message: string, conversationId: string, auth?: AuthConfig) => Promise<void>;
+  a2aStop: (conversationId: string) => Promise<void>;
+  getAgentCard: (endpoint: string, auth?: AuthConfig) => Promise<AgentCard>;
+
+  // A2A 流式事件订阅
+  onA2AStreamChunk: (callback: (data: { conversationId: string; data: A2AResult }) => void) => () => void;
+  onA2AStreamComplete: (callback: (data: { conversationId: string; contextId?: string }) => void) => () => void;
+  onA2AStreamError: (callback: (data: { conversationId: string; error: A2AError }) => void) => () => void;
+
+  // 窗口控制 (Windows/Linux 自定义标题栏)
+  windowMinimize: () => Promise<void>;
+  windowMaximize: () => Promise<void>;
+  windowClose: () => Promise<void>;
+  windowIsMaximized: () => Promise<boolean>;
+  getPlatform: () => Promise<NodeJS.Platform>;
+}
+
+const electronAPI: ElectronAPI = {
+  // 配置管理
+  getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET),
+  setConfig: (updates) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SET, updates),
+
+  // 对话管理
+  listConversations: () => ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_LIST),
+  createConversation: (title, endpoint) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_CREATE, { title, endpoint }),
+  deleteConversation: (id) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_DELETE, { id }),
+  updateConversation: (id, updates) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONVERSATIONS_UPDATE, { id, updates }),
+
+  // 消息管理
+  getMessages: (conversationId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MESSAGES_LIST, { conversationId }),
+  saveMessage: (conversationId, message) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MESSAGES_SAVE, { conversationId, message }),
+
+  // Debug Logs 管理
+  getDebugLogs: (conversationId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DEBUG_LOGS_LIST, { conversationId }),
+  saveDebugLogs: (conversationId, logs) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DEBUG_LOGS_SAVE, { conversationId, logs }),
+  saveDebugLog: (conversationId, log) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DEBUG_LOGS_SAVE_ONE, { conversationId, log }),
+  clearDebugLogs: (conversationId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.DEBUG_LOGS_CLEAR, { conversationId }),
+
+  // A2A 通信
+  a2aSend: (endpoint, message, conversationId, auth) =>
+    ipcRenderer.invoke(IPC_CHANNELS.A2A_SEND, { endpoint, message, conversationId, auth }),
+  a2aStream: (endpoint, message, conversationId, auth) =>
+    ipcRenderer.invoke(IPC_CHANNELS.A2A_STREAM, { endpoint, message, conversationId, auth }),
+  a2aStop: (conversationId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.A2A_STOP, { conversationId }),
+  getAgentCard: (endpoint, auth) =>
+    ipcRenderer.invoke(IPC_CHANNELS.A2A_GET_AGENT_CARD, { endpoint, auth }),
+
+  // A2A 流式事件订阅
+  onA2AStreamChunk: (callback) => {
+    const listener = (_: unknown, data: { conversationId: string; data: A2AResult }): void =>
+      callback(data);
+    ipcRenderer.on(IPC_CHANNELS.A2A_STREAM_CHUNK, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.A2A_STREAM_CHUNK, listener);
+    };
+  },
+
+  onA2AStreamComplete: (callback) => {
+    const listener = (_: unknown, data: { conversationId: string; contextId?: string }): void =>
+      callback(data);
+    ipcRenderer.on(IPC_CHANNELS.A2A_STREAM_COMPLETE, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.A2A_STREAM_COMPLETE, listener);
+    };
+  },
+
+  onA2AStreamError: (callback) => {
+    const listener = (_: unknown, data: { conversationId: string; error: A2AError }): void =>
+      callback(data);
+    ipcRenderer.on(IPC_CHANNELS.A2A_STREAM_ERROR, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.A2A_STREAM_ERROR, listener);
+    };
+  },
+
+  // 窗口控制 (Windows/Linux 自定义标题栏)
+  windowMinimize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE),
+  windowMaximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
+  windowClose: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
+  windowIsMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  getPlatform: () => ipcRenderer.invoke(IPC_CHANNELS.GET_PLATFORM),
+};
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}

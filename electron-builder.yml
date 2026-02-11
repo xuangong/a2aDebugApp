@@ -1,0 +1,63 @@
+# electron-builder 配置
+
+appId: com.a2a-debug.app
+productName: A2A Debug App
+copyright: Copyright © 2025 A2A Debug App
+
+# Electron 版本
+electronVersion: 39.5.1
+
+# 目录配置
+directories:
+  output: out
+  buildResources: resources
+
+# 压缩配置
+compression: normal
+
+# ASAR 打包配置
+asar: true
+
+# 跳过 npm install
+npmRebuild: false
+
+# 通用文件配置
+files:
+  - dist/**/*
+  - package.json
+
+# macOS 配置
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+
+# DMG 配置
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# Windows 配置
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+# NSIS 安装程序配置
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
