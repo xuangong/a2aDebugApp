@@ -383,6 +383,7 @@ export const IPC_CHANNELS = {
   LIVE_STOP_WATCH: 'live:stop-watch',
   LIVE_GET_SESSIONS: 'live:get-sessions',
   LIVE_GET_MESSAGES: 'live:get-messages',
+  LIVE_GET_DEBUG_LOGS: 'live:get-debug-logs',
   LIVE_SESSION_UPDATE: 'live:session-update',
 } as const;
 

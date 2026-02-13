@@ -5,10 +5,17 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
-import { existsSync, readFileSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync, appendFileSync } from 'fs';
 import { join, basename } from 'path';
 import { BrowserWindow } from 'electron';
-import { IPC_CHANNELS, type LiveSession, type LiveSessionStatus, type Message } from '../../shared/types';
+import { IPC_CHANNELS, type LiveSession, type LiveSessionStatus, type Message, type JsonRpcLogEntry } from '../../shared/types';
+import { tmpdir } from 'os';
+
+const debugLogPath = join(tmpdir(), 'a2a-live-debug.log');
+export function debugLog(msg: string): void {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { appendFileSync(debugLogPath, line); } catch { /* ignore */ }
+}
 
 interface ConversationMeta {
   id: string;
@@ -46,7 +53,11 @@ export class LiveWatcher {
       this.stopWatch();
     }
 
+    debugLog('startWatch dir: ' + dir);
+    debugLog('existsSync(dir): ' + existsSync(dir));
+
     if (!existsSync(dir)) {
+      debugLog('dir does not exist, returning false');
       return false;
     }
 
@@ -56,13 +67,20 @@ export class LiveWatcher {
 
     // 初始加载
     this.loadConversationsIndex();
+    debugLog('conversationsMeta count: ' + this.conversationsMeta.size);
     this.scanExistingSessions();
+    debugLog('sessions count after scan: ' + this.sessions.size);
+
+    // 对 WSL/UNC 路径使用 polling（fs.watch 不支持这些路径）
+    const usePolling = /^[\\/]{2}/.test(dir);
 
     // 创建 watcher
     this.watcher = watch(dir, {
       persistent: true,
       ignoreInitial: true,
       depth: 1,
+      usePolling,
+      interval: usePolling ? 500 : undefined,
       awaitWriteFinish: {
         stabilityThreshold: 100,
         pollInterval: 50,
@@ -151,12 +169,31 @@ export class LiveWatcher {
     }
   }
 
+  /**
+   * 获取会话的 debug logs（只读）
+   */
+  getSessionDebugLogs(contextId: string): JsonRpcLogEntry[] {
+    if (!this.watchDir) return [];
+
+    const debugPath = join(this.watchDir, 'conversations', `${contextId}.debug.jsonl`);
+    if (!existsSync(debugPath)) return [];
+
+    try {
+      const content = readFileSync(debugPath, 'utf-8');
+      const lines = content.split('\n').filter((line) => line.trim());
+      return lines.map((line) => JSON.parse(line) as JsonRpcLogEntry);
+    } catch {
+      return [];
+    }
+  }
+
   // ===== Private Methods =====
 
   private loadConversationsIndex(): void {
     if (!this.watchDir) return;
 
     const indexPath = join(this.watchDir, 'conversations.json');
+    debugLog('indexPath: ' + indexPath + ' exists: ' + existsSync(indexPath));
     if (!existsSync(indexPath)) return;
 
     try {
@@ -166,8 +203,9 @@ export class LiveWatcher {
       for (const conv of index.conversations) {
         this.conversationsMeta.set(conv.id, conv);
       }
-    } catch {
-      // Ignore parse errors
+      debugLog('loaded ' + this.conversationsMeta.size + ' conversations from index');
+    } catch (err) {
+      debugLog('failed to parse index: ' + err);
     }
   }
 
@@ -175,12 +213,15 @@ export class LiveWatcher {
     if (!this.watchDir) return;
 
     const conversationsDir = join(this.watchDir, 'conversations');
+    debugLog('conversationsDir: ' + conversationsDir + ' exists: ' + existsSync(conversationsDir));
     if (!existsSync(conversationsDir)) return;
 
     // 从 index 中加载所有会话
     for (const [contextId] of this.conversationsMeta) {
       const messagesPath = join(conversationsDir, `${contextId}.jsonl`);
-      if (existsSync(messagesPath)) {
+      const exists = existsSync(messagesPath);
+      debugLog('session file: ' + messagesPath + ' exists: ' + exists);
+      if (exists) {
         this.updateSessionState(contextId, messagesPath);
       }
     }
@@ -199,6 +240,11 @@ export class LiveWatcher {
     if (fileName.endsWith('.jsonl') && !fileName.endsWith('.debug.jsonl')) {
       const contextId = fileName.replace('.jsonl', '');
       this.updateSessionState(contextId, filePath);
+      this.notifyUpdate();
+    }
+
+    // debug.jsonl 变化时也通知更新，以便渲染进程刷新 debug logs
+    if (fileName.endsWith('.debug.jsonl')) {
       this.notifyUpdate();
     }
   }

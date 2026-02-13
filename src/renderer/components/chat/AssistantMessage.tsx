@@ -2,10 +2,10 @@
  * 助手消息组件
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, ChevronRight, ChevronDown, Maximize2, Minimize2, X, Eye, Code, FileText } from 'lucide-react';
+import { Copy, Check, ChevronRight, ChevronDown, Maximize2, Minimize2, Eye, Code, FileText } from 'lucide-react';
 import type { AssistantMessage as AssistantMessageType, A2AResult, ToolResultData } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
 import { parseXmlContent, type XmlCall } from '../../lib/xml-streaming-parser';
@@ -27,20 +27,21 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
   // 每个消息区块独立控制视图模式，默认使用全局设置
   const [localViewMode, setLocalViewMode] = useState<ViewMode | null>(null);
   const viewMode = localViewMode ?? globalViewMode;
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // 处理点击事件，只在没有选中文本时触发
-  const handleClick = useCallback(() => {
+  // 处理点击事件，只在没有选中文本且点击来自本 DOM 内时触发
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    // 忽略来自 portal（不在消息气泡 DOM 内）的点击
+    if (containerRef.current && !containerRef.current.contains(e.target as Node)) return;
     const selection = window.getSelection();
-    if (selection && selection.toString().length > 0) {
-      // 用户在选择文本，不触发点击
-      return;
-    }
+    if (selection && selection.toString().length > 0) return;
     onClick?.();
   }, [onClick]);
 
   return (
     <div className="flex justify-start w-full">
       <div
+        ref={containerRef}
         className={`w-full bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3 transition-all select-text ${
           isSearchMatch
             ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 bg-yellow-50 dark:bg-yellow-900/20'
@@ -278,89 +279,18 @@ function MarkdownContent({ content }: { content: string }) {
 
 function RawView({ message, searchQuery }: { message: AssistantMessageType; searchQuery?: string }) {
   const [copied, setCopied] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const jsonString = useMemo(
     () => JSON.stringify(message.rawResponse, null, 2),
     [message.rawResponse]
   );
 
-  // 高亮搜索词
-  const highlightedJson = useMemo(() => {
-    if (!searchQuery?.trim()) return jsonString;
-    const query = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(${query})`, 'gi');
-    const parts = jsonString.split(regex);
-    return parts.map((part, i) =>
-      regex.test(part) ? (
-        <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 text-gray-900 dark:text-gray-100 rounded px-0.5">
-          {part}
-        </mark>
-      ) : (
-        part
-      )
-    );
-  }, [jsonString, searchQuery]);
-
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(jsonString);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [jsonString]);
-
-  const handleMaximize = useCallback(() => {
-    setIsMaximized(true);
-  }, []);
-
-  const handleMinimize = useCallback(() => {
-    setIsMaximized(false);
-  }, []);
-
-  // 最大化模态框
-  if (isMaximized) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-900 rounded-xl w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col shadow-2xl">
-          {/* 头部工具栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Raw Response
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
-                title="Copy to clipboard"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-green-500">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={handleMinimize}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
-                title="Exit fullscreen"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          {/* JSON 内容 */}
-          <div className="flex-1 overflow-auto p-4">
-            <CollapsibleJson data={message.rawResponse} />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
@@ -382,16 +312,20 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
             )}
           </button>
           <button
-            onClick={handleMaximize}
+            onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
-            title="Maximize"
+            title={isExpanded ? 'Collapse' : 'Expand'}
           >
-            <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            {isExpanded ? (
+              <Minimize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            ) : (
+              <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            )}
           </button>
         </div>
       </div>
       {/* JSON 内容（可折叠） */}
-      <div className="text-xs bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto max-h-96">
+      <div className={`text-xs bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
         <CollapsibleJson data={message.rawResponse} />
       </div>
     </div>
@@ -513,7 +447,7 @@ function CollapsibleJson({ data, depth = 0, initialExpanded = true }: Collapsibl
 /** Content 视图 - 拼接所有文本内容 */
 function ContentView({ message, searchQuery }: { message: AssistantMessageType; searchQuery?: string }) {
   const [copied, setCopied] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // 从 rawResponse 中提取所有文本内容
   const allContent = useMemo(() => {
@@ -535,6 +469,16 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     const seenTexts = new Set<string>();
     const textParts: string[] = [];
     for (const item of items) {
+      // 处理简化的流式 chunk 格式 {text, state}（后端录制格式）
+      if ('text' in item && typeof (item as Record<string, unknown>).text === 'string') {
+        const text = (item as Record<string, unknown>).text as string;
+        if (!seenTexts.has(text)) {
+          seenTexts.add(text);
+          textParts.push(text);
+        }
+        continue;
+      }
+
       const parts = extractPartsFromResult(item);
       for (const part of parts) {
         if (part.kind === 'text' && 'text' in part) {
@@ -573,54 +517,6 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     setTimeout(() => setCopied(false), 2000);
   }, [allContent]);
 
-  // 最大化模态框
-  if (isMaximized) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-900 rounded-xl w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col shadow-2xl">
-          {/* 头部工具栏 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Raw Content ({allContent.length} chars)
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors"
-                title="Copy to clipboard"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-green-500">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={() => setIsMaximized(false)}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
-                title="Exit fullscreen"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-          {/* 内容 */}
-          <div className="flex-1 overflow-auto p-4">
-            <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
-              {highlightedContent}
-            </pre>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
       {/* 头部工具栏 */}
@@ -641,16 +537,20 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
             )}
           </button>
           <button
-            onClick={() => setIsMaximized(true)}
+            onClick={() => setIsExpanded(!isExpanded)}
             className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
-            title="Maximize"
+            title={isExpanded ? 'Collapse' : 'Expand'}
           >
-            <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            {isExpanded ? (
+              <Minimize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            ) : (
+              <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+            )}
           </button>
         </div>
       </div>
       {/* 内容 */}
-      <div className="bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto max-h-96">
+      <div className={`bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
         <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
           {highlightedContent}
         </pre>
@@ -658,3 +558,5 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     </div>
   );
 }
+
+

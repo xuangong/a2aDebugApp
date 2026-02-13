@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useAtom, useSetAtom } from 'jotai';
+import { useAtom, useSetAtom, useAtomValue } from 'jotai';
 import {
   configAtom,
   conversationsAtom,
@@ -11,10 +11,14 @@ import {
   messagesAtom,
   endpointAtom,
   debugLogsAtom,
+  appModeAtom,
+  liveSelectedContextIdAtom,
 } from './atoms/chat-atoms';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { ChatView } from './components/chat/ChatView';
+import { LiveSessionView } from './components/chat/LiveSessionView';
 import { WindowsTitleBar } from './components/titlebar/WindowsTitleBar';
+import { Radio } from 'lucide-react';
 
 export default function App() {
   const [config, setConfig] = useAtom(configAtom);
@@ -23,6 +27,8 @@ export default function App() {
   const setMessages = useSetAtom(messagesAtom);
   const setEndpoint = useSetAtom(endpointAtom);
   const setDebugLogs = useSetAtom(debugLogsAtom);
+  const appMode = useAtomValue(appModeAtom);
+  const liveSelectedContextId = useAtomValue(liveSelectedContextIdAtom);
 
   // 平台检测
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
@@ -86,6 +92,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+
       {/* Windows/Linux 自定义标题栏 */}
       {platform && !isMac && <WindowsTitleBar />}
 
@@ -95,7 +102,22 @@ export default function App() {
 
         {/* 主内容区 */}
         <main className="flex-1 flex flex-col min-w-0">
-          <ChatView />
+          {appMode === 'live' ? (
+            liveSelectedContextId ? (
+              <LiveSessionView contextId={liveSelectedContextId} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div className="text-center space-y-3">
+                  <Radio className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Select a live session from the sidebar to preview
+                  </p>
+                </div>
+              </div>
+            )
+          ) : (
+            <ChatView />
+          )}
         </main>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { IPC_CHANNELS } from '../shared/types';
 import { A2AClient } from './lib/a2a-client';
 import { ConversationManager } from './lib/conversation-manager';
 import { ConfigManager } from './lib/config-manager';
-import { liveWatcher } from './lib/live-watcher';
+import { liveWatcher, debugLog } from './lib/live-watcher';
 import type { A2ASession, AuthConfig } from '../shared/types';
 
 const conversationManager = new ConversationManager();
@@ -237,9 +237,10 @@ export function registerIpcHandlers(): void {
 
   // ===== Live Viewer =====
 
-  ipcMain.handle(IPC_CHANNELS.LIVE_START_WATCH, async (event, { watchDir }) => {
+  ipcMain.handle(IPC_CHANNELS.LIVE_START_WATCH, async (event, args) => {
+    debugLog('IPC LIVE_START_WATCH called, args=' + JSON.stringify(args));
     // 如果没有传入目录，打开选择对话框
-    let dir = watchDir;
+    let dir = args?.watchDir;
     if (!dir) {
       const window = BrowserWindow.fromWebContents(event.sender);
       const result = await dialog.showOpenDialog(window!, {
@@ -249,16 +250,20 @@ export function registerIpcHandlers(): void {
       });
 
       if (result.canceled || result.filePaths.length === 0) {
+        debugLog('IPC dialog canceled');
         return { success: false, watchDir: null };
       }
       dir = result.filePaths[0];
+      debugLog('IPC selected dir: ' + dir);
     }
 
     const success = liveWatcher.startWatch(dir);
+    const sessions = success ? liveWatcher.getSessions() : [];
+    debugLog('IPC result: success=' + success + ' sessions=' + JSON.stringify(sessions));
     return {
       success,
       watchDir: success ? dir : null,
-      sessions: success ? liveWatcher.getSessions() : [],
+      sessions,
     };
   });
 
@@ -277,5 +282,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.LIVE_GET_MESSAGES, async (_, { contextId }) => {
     return liveWatcher.getSessionMessages(contextId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LIVE_GET_DEBUG_LOGS, async (_, { contextId }) => {
+    return liveWatcher.getSessionDebugLogs(contextId);
   });
 }

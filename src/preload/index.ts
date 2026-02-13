@@ -76,6 +76,7 @@ export interface ElectronAPI {
   liveStopWatch: () => Promise<{ success: boolean }>;
   liveGetSessions: () => Promise<{ watching: boolean; watchDir: string | null; sessions: LiveSession[] }>;
   liveGetMessages: (contextId: string) => Promise<Message[]>;
+  liveGetDebugLogs: (contextId: string) => Promise<JsonRpcLogEntry[]>;
   onLiveSessionUpdate: (callback: (data: { watching: boolean; watchDir: string | null; sessions: LiveSession[] }) => void) => () => void;
 }
 
@@ -171,6 +172,8 @@ const electronAPI: ElectronAPI = {
   liveGetSessions: () => ipcRenderer.invoke(IPC_CHANNELS.LIVE_GET_SESSIONS),
   liveGetMessages: (contextId) =>
     ipcRenderer.invoke(IPC_CHANNELS.LIVE_GET_MESSAGES, { contextId }),
+  liveGetDebugLogs: (contextId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIVE_GET_DEBUG_LOGS, { contextId }),
   onLiveSessionUpdate: (callback) => {
     const listener = (
       _: unknown,

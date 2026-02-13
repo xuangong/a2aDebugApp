@@ -298,6 +298,7 @@ export function Sidebar() {
       className={`bg-gray-50 dark:bg-gray-800 flex flex-col transition-all duration-300 ease-in-out ${
         sidebarExpanded ? 'w-64' : 'w-12'
       }`}
+      onClick={() => console.log('sidebar root clicked')}
     >
       {/* 标题栏 */}
       <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-gray-900" />
