@@ -3,7 +3,7 @@
  */
 
 import { atom } from 'jotai';
-import type { Conversation, Message, AppConfig, A2AResult, AgentCard, AuthConfig, JsonRpcLogEntry } from '../../shared/types';
+import type { Conversation, Message, AppConfig, A2AResult, AgentCard, AuthConfig, JsonRpcLogEntry, LiveSession } from '../../shared/types';
 
 // ===== 配置状态 =====
 export const configAtom = atom<AppConfig>({
@@ -69,3 +69,13 @@ export const currentStreamingMessageIdAtom = atom<string | null>(null);
 
 // ===== 错误状态 =====
 export const errorAtom = atom<string | null>(null);
+
+// ===== Live Viewer 状态 =====
+export const liveWatchingAtom = atom(false);
+export const liveWatchDirAtom = atom<string | null>(null);
+export const liveSessionsAtom = atom<LiveSession[]>([]);
+export const liveSelectedContextIdAtom = atom<string | null>(null);
+
+// 当前视图模式：debug（正常调试）或 live（实时监控）
+export type AppMode = 'debug' | 'live';
+export const appModeAtom = atom<AppMode>('debug');

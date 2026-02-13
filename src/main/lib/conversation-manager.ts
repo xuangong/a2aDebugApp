@@ -4,10 +4,10 @@
  * 使用 JSONL 格式存储对话历史，参考 Proma 实现
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, copyFileSync } from 'fs';
+import { join, basename } from 'path';
 import { app } from 'electron';
-import type { Conversation, Message, JsonRpcLogEntry } from '../../shared/types';
+import type { Conversation, Message, JsonRpcLogEntry, BackendConversation, ImportResult, ImportSource } from '../../shared/types';
 
 const APP_DATA_DIR = join(app.getPath('home'), '.a2a-debug-app');
 const CONVERSATIONS_INDEX = join(APP_DATA_DIR, 'conversations.json');
@@ -209,5 +209,170 @@ export class ConversationManager {
   clearDebugLogs(conversationId: string): void {
     const logsPath = this.getDebugLogsPath(conversationId);
     writeFileSync(logsPath, '');
+  }
+
+  // ===== 后端录制导入 =====
+
+  /**
+   * 列出指定目录中的录制会话
+   */
+  listBackendConversations(sourceDir: string): BackendConversation[] {
+    const backendIndexPath = join(sourceDir, 'conversations.json');
+
+    if (!existsSync(backendIndexPath)) {
+      return [];
+    }
+
+    try {
+      const content = readFileSync(backendIndexPath, 'utf-8');
+      const backendIndex = JSON.parse(content) as ConversationsIndex;
+      const localIndex = this.loadIndex();
+      const localIds = new Set(localIndex.conversations.map((c) => c.id));
+
+      return backendIndex.conversations.map((conv) => ({
+        ...conv,
+        imported: localIds.has(conv.id),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 从指定目录导入录制的会话
+   */
+  importBackendConversations(sourceDir: string, conversationIds: string[]): ImportResult {
+    const result: ImportResult = {
+      success: true,
+      importedCount: 0,
+      skippedCount: 0,
+      errors: [],
+    };
+
+    const backendIndexPath = join(sourceDir, 'conversations.json');
+    const backendConversationsDir = join(sourceDir, 'conversations');
+
+    if (!existsSync(backendIndexPath)) {
+      result.success = false;
+      result.errors.push('conversations.json not found in selected directory');
+      return result;
+    }
+
+    try {
+      const backendContent = readFileSync(backendIndexPath, 'utf-8');
+      const backendIndex = JSON.parse(backendContent) as ConversationsIndex;
+      const localIndex = this.loadIndex();
+      const localIds = new Set(localIndex.conversations.map((c) => c.id));
+
+      for (const convId of conversationIds) {
+        const backendConv = backendIndex.conversations.find((c) => c.id === convId);
+
+        if (!backendConv) {
+          result.errors.push(`Conversation ${convId} not found in source`);
+          continue;
+        }
+
+        if (localIds.has(convId)) {
+          result.skippedCount++;
+          continue;
+        }
+
+        try {
+          // 复制消息文件
+          const backendMessagesPath = join(backendConversationsDir, `${convId}.jsonl`);
+          const localMessagesPath = this.getMessagesPath(convId);
+          if (existsSync(backendMessagesPath)) {
+            copyFileSync(backendMessagesPath, localMessagesPath);
+          } else {
+            writeFileSync(localMessagesPath, '');
+          }
+
+          // 复制调试日志文件
+          const backendDebugPath = join(backendConversationsDir, `${convId}.debug.jsonl`);
+          const localDebugPath = this.getDebugLogsPath(convId);
+          if (existsSync(backendDebugPath)) {
+            copyFileSync(backendDebugPath, localDebugPath);
+          }
+
+          // 添加到本地索引，记录导入来源
+          const importedConv: Conversation = {
+            id: backendConv.id,
+            title: backendConv.title,
+            createdAt: backendConv.createdAt,
+            updatedAt: backendConv.updatedAt,
+            endpoint: backendConv.endpoint,
+            contextId: backendConv.contextId,
+            importSource: sourceDir,
+          };
+
+          localIndex.conversations.push(importedConv);
+          result.importedCount++;
+        } catch (err) {
+          result.errors.push(`Failed to import ${convId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
+      // 保存更新后的索引
+      this.saveIndex(localIndex);
+
+      if (result.errors.length > 0) {
+        result.success = result.importedCount > 0;
+      }
+    } catch (err) {
+      result.success = false;
+      result.errors.push(`Failed to read source index: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * 获取所有导入来源
+   */
+  listImportSources(): ImportSource[] {
+    const index = this.loadIndex();
+    const sourceMap = new Map<string, number>();
+
+    for (const conv of index.conversations) {
+      if (conv.importSource) {
+        sourceMap.set(conv.importSource, (sourceMap.get(conv.importSource) || 0) + 1);
+      }
+    }
+
+    return Array.from(sourceMap.entries()).map(([path, count]) => ({
+      path,
+      name: basename(path),
+      conversationCount: count,
+    }));
+  }
+
+  /**
+   * 卸载指定来源的所有会话
+   */
+  uninstallImportSource(sourcePath: string): { success: boolean; removedCount: number } {
+    const index = this.loadIndex();
+    const toRemove = index.conversations.filter((c) => c.importSource === sourcePath);
+
+    // 删除文件
+    for (const conv of toRemove) {
+      const messagesPath = this.getMessagesPath(conv.id);
+      const debugPath = this.getDebugLogsPath(conv.id);
+
+      if (existsSync(messagesPath)) {
+        unlinkSync(messagesPath);
+      }
+      if (existsSync(debugPath)) {
+        unlinkSync(debugPath);
+      }
+    }
+
+    // 更新索引
+    index.conversations = index.conversations.filter((c) => c.importSource !== sourcePath);
+    this.saveIndex(index);
+
+    return {
+      success: true,
+      removedCount: toRemove.length,
+    };
   }
 }

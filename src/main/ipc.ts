@@ -2,11 +2,12 @@
  * IPC 处理器注册
  */
 
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { IPC_CHANNELS } from '../shared/types';
 import { A2AClient } from './lib/a2a-client';
 import { ConversationManager } from './lib/conversation-manager';
 import { ConfigManager } from './lib/config-manager';
+import { liveWatcher } from './lib/live-watcher';
 import type { A2ASession, AuthConfig } from '../shared/types';
 
 const conversationManager = new ConversationManager();
@@ -199,5 +200,82 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.GET_PLATFORM, async () => {
     return process.platform;
+  });
+
+  // ===== 后端录制导入 =====
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_SELECT_DIR, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(window!, {
+      title: 'Select recordings directory',
+      properties: ['openDirectory'],
+      message: 'Select the directory containing conversations.json',
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_LIST, async (_, { sourceDir }) => {
+    return conversationManager.listBackendConversations(sourceDir);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_IMPORT, async (_, { sourceDir, conversationIds }) => {
+    return conversationManager.importBackendConversations(sourceDir, conversationIds);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_LIST_SOURCES, async () => {
+    return conversationManager.listImportSources();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_UNINSTALL, async (_, { sourcePath }) => {
+    return conversationManager.uninstallImportSource(sourcePath);
+  });
+
+  // ===== Live Viewer =====
+
+  ipcMain.handle(IPC_CHANNELS.LIVE_START_WATCH, async (event, { watchDir }) => {
+    // 如果没有传入目录，打开选择对话框
+    let dir = watchDir;
+    if (!dir) {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(window!, {
+        title: 'Select directory to watch',
+        properties: ['openDirectory'],
+        message: 'Select the recordings directory to monitor',
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, watchDir: null };
+      }
+      dir = result.filePaths[0];
+    }
+
+    const success = liveWatcher.startWatch(dir);
+    return {
+      success,
+      watchDir: success ? dir : null,
+      sessions: success ? liveWatcher.getSessions() : [],
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LIVE_STOP_WATCH, async () => {
+    liveWatcher.stopWatch();
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LIVE_GET_SESSIONS, async () => {
+    return {
+      watching: liveWatcher.isWatching(),
+      watchDir: liveWatcher.getWatchDir(),
+      sessions: liveWatcher.getSessions(),
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LIVE_GET_MESSAGES, async (_, { contextId }) => {
+    return liveWatcher.getSessionMessages(contextId);
   });
 }

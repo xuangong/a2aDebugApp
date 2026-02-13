@@ -214,6 +214,8 @@ export interface Conversation {
   updatedAt: number;
   endpoint: string;
   contextId?: string;
+  /** 导入来源目录（如果是导入的会话） */
+  importSource?: string;
 }
 
 // ===== 调试记录类型 =====
@@ -368,4 +370,61 @@ export const IPC_CHANNELS = {
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:is-maximized',
   GET_PLATFORM: 'get-platform',
+
+  // 后端录制导入
+  IMPORT_BACKEND_LIST: 'import:backend:list',
+  IMPORT_BACKEND_IMPORT: 'import:backend:import',
+  IMPORT_BACKEND_SELECT_DIR: 'import:backend:select-dir',
+  IMPORT_BACKEND_UNINSTALL: 'import:backend:uninstall',
+  IMPORT_BACKEND_LIST_SOURCES: 'import:backend:list-sources',
+
+  // Live Viewer
+  LIVE_START_WATCH: 'live:start-watch',
+  LIVE_STOP_WATCH: 'live:stop-watch',
+  LIVE_GET_SESSIONS: 'live:get-sessions',
+  LIVE_GET_MESSAGES: 'live:get-messages',
+  LIVE_SESSION_UPDATE: 'live:session-update',
 } as const;
+
+/** 后端录制的会话信息 */
+export interface BackendConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  endpoint: string;
+  contextId?: string;
+  /** 是否已导入到本地 */
+  imported: boolean;
+}
+
+/** 导入结果 */
+export interface ImportResult {
+  success: boolean;
+  importedCount: number;
+  skippedCount: number;
+  errors: string[];
+}
+
+/** 导入来源信息 */
+export interface ImportSource {
+  path: string;
+  name: string;
+  conversationCount: number;
+}
+
+// ===== Live Viewer Types =====
+
+/** Live 会话状态 */
+export type LiveSessionStatus = 'streaming' | 'active' | 'idle' | 'inactive';
+
+/** Live 会话信息 */
+export interface LiveSession {
+  contextId: string;
+  title: string;
+  endpoint: string;
+  lastActivity: number;
+  status: LiveSessionStatus;
+  messageCount: number;
+  lastMessage?: string;
+}

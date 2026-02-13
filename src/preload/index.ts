@@ -16,6 +16,10 @@ import type {
   AgentCard,
   AuthConfig,
   JsonRpcLogEntry,
+  BackendConversation,
+  ImportResult,
+  ImportSource,
+  LiveSession,
 } from '../shared/types';
 
 /**
@@ -59,6 +63,20 @@ export interface ElectronAPI {
   windowClose: () => Promise<void>;
   windowIsMaximized: () => Promise<boolean>;
   getPlatform: () => Promise<NodeJS.Platform>;
+
+  // 后端录制导入
+  selectImportDirectory: () => Promise<string | null>;
+  listBackendConversations: (sourceDir: string) => Promise<BackendConversation[]>;
+  importBackendConversations: (sourceDir: string, conversationIds: string[]) => Promise<ImportResult>;
+  listImportSources: () => Promise<ImportSource[]>;
+  uninstallImportSource: (sourcePath: string) => Promise<{ success: boolean; removedCount: number }>;
+
+  // Live Viewer
+  liveStartWatch: (watchDir?: string) => Promise<{ success: boolean; watchDir: string | null; sessions: LiveSession[] }>;
+  liveStopWatch: () => Promise<{ success: boolean }>;
+  liveGetSessions: () => Promise<{ watching: boolean; watchDir: string | null; sessions: LiveSession[] }>;
+  liveGetMessages: (contextId: string) => Promise<Message[]>;
+  onLiveSessionUpdate: (callback: (data: { watching: boolean; watchDir: string | null; sessions: LiveSession[] }) => void) => () => void;
 }
 
 const electronAPI: ElectronAPI = {
@@ -135,6 +153,34 @@ const electronAPI: ElectronAPI = {
   windowClose: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
   windowIsMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
   getPlatform: () => ipcRenderer.invoke(IPC_CHANNELS.GET_PLATFORM),
+
+  // 后端录制导入
+  selectImportDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_BACKEND_SELECT_DIR),
+  listBackendConversations: (sourceDir) =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_BACKEND_LIST, { sourceDir }),
+  importBackendConversations: (sourceDir, conversationIds) =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_BACKEND_IMPORT, { sourceDir, conversationIds }),
+  listImportSources: () => ipcRenderer.invoke(IPC_CHANNELS.IMPORT_BACKEND_LIST_SOURCES),
+  uninstallImportSource: (sourcePath) =>
+    ipcRenderer.invoke(IPC_CHANNELS.IMPORT_BACKEND_UNINSTALL, { sourcePath }),
+
+  // Live Viewer
+  liveStartWatch: (watchDir) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIVE_START_WATCH, { watchDir }),
+  liveStopWatch: () => ipcRenderer.invoke(IPC_CHANNELS.LIVE_STOP_WATCH),
+  liveGetSessions: () => ipcRenderer.invoke(IPC_CHANNELS.LIVE_GET_SESSIONS),
+  liveGetMessages: (contextId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.LIVE_GET_MESSAGES, { contextId }),
+  onLiveSessionUpdate: (callback) => {
+    const listener = (
+      _: unknown,
+      data: { watching: boolean; watchDir: string | null; sessions: LiveSession[] }
+    ): void => callback(data);
+    ipcRenderer.on(IPC_CHANNELS.LIVE_SESSION_UPDATE, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.LIVE_SESSION_UPDATE, listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
