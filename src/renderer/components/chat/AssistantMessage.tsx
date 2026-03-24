@@ -1,16 +1,34 @@
 /**
- * 助手消息组件
+ * Assistant Message Component
  */
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check, ChevronRight, ChevronDown, Maximize2, Minimize2, Eye, Code, FileText } from 'lucide-react';
-import type { AssistantMessage as AssistantMessageType, A2AResult, ToolResultData } from '../../../shared/types';
+import type { AssistantMessage as AssistantMessageType, A2AResult, ToolResultData, NativeToolCall } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
 import { parseXmlContent, type XmlCall } from '../../lib/xml-streaming-parser';
-import { ToolCallCard, CompleteCard, AskCard, TaskClarifyCard, PresentationPlannerCard, DateTimeCard } from '../ToolCallCard';
-import { extractPartsFromResult, collectToolResults } from '../../../shared/types';
+import {
+  ToolCallCard,
+  CompleteCard,
+  AskCard,
+  TaskClarifyCard,
+  PresentationPlannerCard,
+  DateTimeCard,
+  NativeToolCallCard,
+  NativeCompleteCard,
+  NativeAskCard,
+  NativeTaskClarifyCard,
+} from '../ToolCallCard';
+import { extractPartsFromResult, collectToolResults, collectNativeToolCalls } from '../../../shared/types';
+
+// Normalize tool name to match against known client tools
+// Handles: task_clarify, task-clarify, Task_clarify, etc.
+function normalizeToolName(name: string | null | undefined): string {
+  if (!name) return '';
+  return name.toLowerCase().replace(/_/g, '-');
+}
 
 interface AssistantMessageProps {
   message: AssistantMessageType;
@@ -19,19 +37,19 @@ interface AssistantMessageProps {
   isSearchMatch?: boolean;
   searchQuery?: string;
   onClick?: () => void;
-  /** 提交 task-clarify 表单时的回调 */
-  onSubmitTaskClarify?: (responses: Record<string, string | string[]>) => Promise<void>;
+  /** Callback for submitting task-clarify form */
+  onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }
 
 export function AssistantMessage({ message, viewMode: globalViewMode, isSelected, isSearchMatch, searchQuery, onClick, onSubmitTaskClarify }: AssistantMessageProps) {
-  // 每个消息区块独立控制视图模式，默认使用全局设置
+  // Each message block has independent view mode control, defaults to global setting
   const [localViewMode, setLocalViewMode] = useState<ViewMode | null>(null);
   const viewMode = localViewMode ?? globalViewMode;
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 处理点击事件，只在没有选中文本且点击来自本 DOM 内时触发
+  // Handle click - only trigger when no text selected and click is from within this DOM
   const handleClick = useCallback((e: React.MouseEvent) => {
-    // 忽略来自 portal（不在消息气泡 DOM 内）的点击
+    // Ignore clicks from portal (outside this message bubble DOM)
     if (containerRef.current && !containerRef.current.contains(e.target as Node)) return;
     const selection = window.getSelection();
     if (selection && selection.toString().length > 0) return;
@@ -52,7 +70,7 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
         onClick={handleClick}
         title="Click to highlight related logs"
       >
-        {/* 视图切换控制 */}
+        {/* View mode toggle */}
         <div className="flex items-center justify-end mb-2 -mt-1" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-md p-0.5">
             <button
@@ -106,28 +124,58 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
   );
 }
 
-function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: AssistantMessageType; searchQuery?: string; onSubmitTaskClarify?: (responses: Record<string, string | string[]>) => Promise<void> }) {
-  // 使用流式解析器解析 XML 工具调用（支持不完整的 XML）
+function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: AssistantMessageType; searchQuery?: string; onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void> }) {
+  // Parse XML tool calls from text content (legacy support)
   const { plainText, xmlCalls, parsingXmlCall } = useMemo(
     () => parseXmlContent(message.content),
     [message.content]
   );
 
-  // 收集所有工具结果（通过 tool_call_id 关联）
-  const toolResultsMap = useMemo(() => {
+  // Normalize rawResponse to A2AResult array
+  const results: A2AResult[] = useMemo(() => {
     const rawResponse = message.rawResponse;
-    let results: A2AResult[] = [];
     if (Array.isArray(rawResponse)) {
-      results = rawResponse;
+      return rawResponse;
     } else if ('result' in rawResponse && rawResponse.result) {
-      results = [rawResponse.result];
+      return [rawResponse.result];
     } else if ('kind' in rawResponse) {
-      results = [rawResponse as unknown as A2AResult];
+      return [rawResponse as unknown as A2AResult];
     }
-    return collectToolResults(results);
+    return [];
   }, [message.rawResponse]);
 
-  // 合并已完成的和正在解析的 XML 调用
+  // Collect tool results (matched by tool_call_id)
+  const toolResultsMap = useMemo(() => collectToolResults(results), [results]);
+
+  // Collect native tool calls from DataParts and merge with message.nativeToolCalls
+  // message.nativeToolCalls contains the finalized tool calls captured before streaming reset
+  const nativeToolCalls = useMemo(() => {
+    const fromResults = collectNativeToolCalls(results);
+    const fromMessage = message.nativeToolCalls || [];
+
+    // If we have tool calls from results, prefer those (more complete data)
+    // Otherwise use the ones saved in the message (finalized from streaming)
+    if (fromResults.length > 0) {
+      return fromResults;
+    }
+    return fromMessage;
+  }, [results, message.nativeToolCalls]);
+
+  // Extract text content from TextParts (for native tool mode)
+  const textFromParts = useMemo(() => {
+    const texts: string[] = [];
+    for (const result of results) {
+      const parts = extractPartsFromResult(result);
+      for (const part of parts) {
+        if (part.kind === 'text' && 'text' in part) {
+          texts.push(part.text);
+        }
+      }
+    }
+    return texts.join('');
+  }, [results]);
+
+  // Merge completed and in-progress XML calls
   const allXmlCalls: XmlCall[] = useMemo(() => {
     const calls = [...xmlCalls];
     if (parsingXmlCall) {
@@ -136,7 +184,7 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     return calls;
   }, [xmlCalls, parsingXmlCall]);
 
-  // 根据 tool_call_id 获取工具结果
+  // Get tool result by tool_call_id
   const getToolResult = (xmlCall: XmlCall): ToolResultData | undefined => {
     const toolCallId = xmlCall.toolCallId || xmlCall.attributes['_tool_call_id'];
     if (toolCallId) {
@@ -145,48 +193,72 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     return undefined;
   };
 
-  // 渲染内容，将文本和工具调用混合
+  // Get tool result for native tool call
+  const getNativeToolResult = (tc: NativeToolCall): ToolResultData | undefined => {
+    return toolResultsMap.get(tc.id);
+  };
+
+  // Render native tool call card
+  const renderNativeToolCard = (tc: NativeToolCall, index: number) => {
+    const toolResult = getNativeToolResult(tc);
+    const key = `native-${tc.id}-${index}`;
+    const normalizedName = normalizeToolName(tc.function?.name);
+
+    if (normalizedName === 'complete') {
+      return <NativeCompleteCard key={key} toolCall={tc} toolResult={toolResult} />;
+    } else if (normalizedName === 'ask') {
+      return <NativeAskCard key={key} toolCall={tc} toolResult={toolResult} />;
+    } else if (normalizedName === 'task-clarify') {
+      return <NativeTaskClarifyCard key={key} toolCall={tc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} />;
+    } else {
+      return <NativeToolCallCard key={key} toolCall={tc} toolResult={toolResult} />;
+    }
+  };
+
+  // Render content mixing text and tool calls
   const renderContent = () => {
-    if (allXmlCalls.length === 0) {
-      // 没有工具调用，直接渲染 Markdown
+    // Check if we have native tool calls (new mode)
+    if (nativeToolCalls.length > 0) {
       return (
-        <MarkdownContent content={message.content} />
+        <>
+          {textFromParts && <MarkdownContent content={textFromParts} />}
+          {nativeToolCalls.map((tc, i) => renderNativeToolCard(tc, i))}
+        </>
       );
     }
 
-    // 有工具调用，需要分段渲染
-    // 使用原始文本 (message.content) 来计算位置
+    // Fall back to XML parsing (legacy mode)
+    if (allXmlCalls.length === 0) {
+      return <MarkdownContent content={message.content} />;
+    }
+
+    // Mix text and XML tool calls
     const originalText = message.content;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
 
     for (const xmlCall of allXmlCalls) {
-      // 渲染工具调用前的文本（使用原始文本的偏移量）
       if (xmlCall.offsetInText > lastIndex) {
         let textBefore = originalText.substring(lastIndex, xmlCall.offsetInText);
-        // 移除 XML 前后的 ``` 标记
         textBefore = textBefore.replace(/```xml?\s*$/g, '').replace(/^\s*```\s*/g, '');
         if (textBefore.trim()) {
-          parts.push(
-            <MarkdownContent key={`md-${lastIndex}`} content={textBefore} />
-          );
+          parts.push(<MarkdownContent key={`md-${lastIndex}`} content={textBefore} />);
         }
       }
 
-      // 获取该工具调用的结果
       const toolResult = getToolResult(xmlCall);
-
-      // 渲染工具调用组件
       const toolKey = `tool-${xmlCall.toolCallId || xmlCall.name}-${xmlCall.offsetInText}`;
-      if (xmlCall.name === 'complete') {
+      const normalizedName = normalizeToolName(xmlCall.name);
+
+      if (normalizedName === 'complete') {
         parts.push(<CompleteCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (xmlCall.name === 'ask') {
+      } else if (normalizedName === 'ask') {
         parts.push(<AskCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (xmlCall.name === 'task-clarify') {
+      } else if (normalizedName === 'task-clarify') {
         parts.push(<TaskClarifyCard key={toolKey} xmlCall={xmlCall} onSubmit={onSubmitTaskClarify} toolResult={toolResult} />);
-      } else if (xmlCall.name === 'presentation-planner') {
+      } else if (normalizedName === 'presentation-planner') {
         parts.push(<PresentationPlannerCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (xmlCall.name === 'get-current-datetime') {
+      } else if (normalizedName === 'get-current-datetime') {
         parts.push(<DateTimeCard key={toolKey} xmlCall={xmlCall} forceCompleted toolResult={toolResult} />);
       } else {
         parts.push(<ToolCallCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
@@ -195,15 +267,11 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
       lastIndex = xmlCall.offsetInText + xmlCall.rawXml.length;
     }
 
-    // 渲染最后一段文本（仅对已完成的 XML 有效）
     if (!parsingXmlCall && lastIndex < originalText.length) {
       let remainingText = originalText.substring(lastIndex);
-      // 移除开头的 ``` 标记
       remainingText = remainingText.replace(/^\s*```\s*/g, '');
       if (remainingText.trim()) {
-        parts.push(
-          <MarkdownContent key={`md-${lastIndex}`} content={remainingText} />
-        );
+        parts.push(<MarkdownContent key={`md-${lastIndex}`} content={remainingText} />);
       }
     }
 
@@ -217,7 +285,7 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
   );
 }
 
-/** Markdown 内容渲染组件 */
+/** Markdown Content Renderer */
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none
@@ -234,7 +302,7 @@ function MarkdownContent({ content }: { content: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // 自定义代码块渲染
+          // Custom code block rendering
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '');
             const isInline = !match && !className;
@@ -253,7 +321,7 @@ function MarkdownContent({ content }: { content: string }) {
               </code>
             );
           },
-          // 自定义链接（新窗口打开）
+          // Custom links (open in new window)
           a({ href, children, ...props }) {
             return (
               <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
@@ -261,7 +329,7 @@ function MarkdownContent({ content }: { content: string }) {
               </a>
             );
           },
-          // 自定义表格样式
+          // Custom table styles
           table({ children, ...props }) {
             return (
               <div className="overflow-x-auto">
@@ -294,7 +362,7 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
 
   return (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-      {/* 头部工具栏 */}
+      {/* Header toolbar */}
       <div className="flex items-center justify-between">
         <div className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
           Raw Response
@@ -324,7 +392,7 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
           </button>
         </div>
       </div>
-      {/* JSON 内容（可折叠） */}
+      {/* JSON content (collapsible) */}
       <div className={`text-xs bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
         <CollapsibleJson data={message.rawResponse} />
       </div>
@@ -332,7 +400,7 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
   );
 }
 
-/** 可折叠的 JSON 查看器 */
+/** Collapsible JSON Viewer */
 interface CollapsibleJsonProps {
   data: unknown;
   depth?: number;
@@ -340,7 +408,7 @@ interface CollapsibleJsonProps {
 }
 
 function CollapsibleJson({ data, depth = 0, initialExpanded = true }: CollapsibleJsonProps) {
-  // 默认全部展开
+  // Expand all by default
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
 
   const indent = depth * 16;
@@ -358,7 +426,7 @@ function CollapsibleJson({ data, depth = 0, initialExpanded = true }: Collapsibl
   }
 
   if (typeof data === 'string') {
-    // 对于长字符串，截断显示
+    // Truncate long strings for display
     const displayValue = data.length > 100 ? `${data.slice(0, 100)}...` : data;
     return (
       <span className="text-green-600 dark:text-green-400" title={data}>
@@ -444,32 +512,32 @@ function CollapsibleJson({ data, depth = 0, initialExpanded = true }: Collapsibl
   return <span className="text-gray-500">{String(data)}</span>;
 }
 
-/** Content 视图 - 拼接所有文本内容 */
+/** Content View - concatenate all text content */
 function ContentView({ message, searchQuery }: { message: AssistantMessageType; searchQuery?: string }) {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // 从 rawResponse 中提取所有文本内容
+  // Extract all text content from rawResponse
   const allContent = useMemo(() => {
     const rawResponse = message.rawResponse;
 
-    // 规范化为 A2AResult 数组
+    // Normalize to A2AResult array
     let items: A2AResult[] = [];
     if (Array.isArray(rawResponse)) {
       items = rawResponse;
     } else if ('result' in rawResponse && rawResponse.result) {
-      // A2AResponse 对象，提取 result
+      // A2AResponse object, extract result
       items = [rawResponse.result];
     } else if ('kind' in rawResponse) {
-      // 直接是 A2AResult
+      // Direct A2AResult
       items = [rawResponse as unknown as A2AResult];
     }
 
-    // 使用 Set 去重，避免重复内容
+    // Use Set for deduplication
     const seenTexts = new Set<string>();
     const textParts: string[] = [];
     for (const item of items) {
-      // 处理简化的流式 chunk 格式 {text, state}（后端录制格式）
+      // Handle simplified streaming chunk format {text, state} (backend recording format)
       if ('text' in item && typeof (item as Record<string, unknown>).text === 'string') {
         const text = (item as Record<string, unknown>).text as string;
         if (!seenTexts.has(text)) {
@@ -482,7 +550,7 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
       const parts = extractPartsFromResult(item);
       for (const part of parts) {
         if (part.kind === 'text' && 'text' in part) {
-          // 只添加未见过的文本
+          // Only add unseen text
           if (!seenTexts.has(part.text)) {
             seenTexts.add(part.text);
             textParts.push(part.text);
@@ -494,7 +562,7 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     return textParts.join('');
   }, [message.rawResponse]);
 
-  // 高亮搜索词
+  // Highlight search query
   const highlightedContent = useMemo(() => {
     if (!searchQuery?.trim()) return allContent;
     const query = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -519,7 +587,7 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
 
   return (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-      {/* 头部工具栏 */}
+      {/* Header toolbar */}
       <div className="flex items-center justify-between">
         <div className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
           Raw Content ({allContent.length} chars)
@@ -549,7 +617,7 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
           </button>
         </div>
       </div>
-      {/* 内容 */}
+      {/* Content */}
       <div className={`bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
         <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
           {highlightedContent}

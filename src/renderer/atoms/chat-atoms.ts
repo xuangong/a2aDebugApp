@@ -3,7 +3,7 @@
  */
 
 import { atom } from 'jotai';
-import type { Conversation, Message, AppConfig, A2AResult, AgentCard, AuthConfig, JsonRpcLogEntry, LiveSession } from '../../shared/types';
+import type { Conversation, Message, AppConfig, A2AResult, AgentCard, AuthConfig, JsonRpcLogEntry, LiveSession, NativeToolCall, ToolResultData, TaskState } from '../../shared/types';
 
 // ===== 配置状态 =====
 export const configAtom = atom<AppConfig>({
@@ -15,6 +15,29 @@ export const configAtom = atom<AppConfig>({
 export const authConfigAtom = atom<AuthConfig>({
   bearerToken: '',
   accountId: '',
+});
+
+// ===== Task 状态（A2A 协议）=====
+// Re-export TaskState from shared types
+export type { TaskState } from '../../shared/types';
+
+export interface TaskInfo {
+  taskId: string;
+  contextId: string;
+  state: TaskState;
+  createdAt: number;
+  updatedAt: number;
+  /** Associated user message ID */
+  messageId?: string;
+}
+
+// 当前 context 的所有 tasks（线性列表）
+export const tasksAtom = atom<TaskInfo[]>([]);
+
+// 当前活跃的 task
+export const currentTaskAtom = atom<TaskInfo | null>((get) => {
+  const tasks = get(tasksAtom);
+  return tasks.length > 0 ? tasks[tasks.length - 1] : null;
 });
 
 // ===== 对话状态 =====
@@ -35,6 +58,10 @@ export const messagesAtom = atom<Message[]>([]);
 export const streamingAtom = atom(false);
 export const streamingContentAtom = atom('');
 export const streamingChunksAtom = atom<A2AResult[]>([]);
+// Streaming tool calls - accumulated from artifact-update events
+export const streamingToolCallsAtom = atom<NativeToolCall[]>([]);
+// Streaming tool results - received from artifact-update events with name="tool_results"
+export const streamingToolResultsAtom = atom<Map<string, ToolResultData>>(new Map());
 
 // ===== UI 状态 =====
 export type ViewMode = 'raw' | 'rendered' | 'content';
@@ -66,6 +93,26 @@ export const selectedMessageIdAtom = atom<string | null>(null);
 
 // 当前流式请求关联的消息 ID
 export const currentStreamingMessageIdAtom = atom<string | null>(null);
+
+// ===== Side Panel 状态（与主线前端对齐）=====
+export type SidePanelTab = 'logs' | 'tool';
+export const sidePanelTabAtom = atom<SidePanelTab>('logs');
+
+// 当前选中的工具调用（用于在右侧面板显示详情）
+export interface SelectedToolCall {
+  type: 'xml' | 'native';
+  toolName: string;
+  toolCallId?: string;
+  arguments?: Record<string, unknown>;
+  content?: string;
+  rawXml?: string;
+  result?: {
+    success: boolean;
+    output: unknown;
+  };
+  streaming?: boolean;
+}
+export const selectedToolCallAtom = atom<SelectedToolCall | null>(null);
 
 // ===== 错误状态 =====
 export const errorAtom = atom<string | null>(null);

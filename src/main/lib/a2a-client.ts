@@ -5,6 +5,7 @@
  */
 
 import type {
+  A2APart,
   A2ARequest,
   A2AResponse,
   A2AResult,
@@ -224,6 +225,22 @@ export class A2AClient {
     text: string,
     session: A2ASession
   ): A2ARequest {
+    return this.buildRequestWithParts(
+      method,
+      [{ kind: 'text', type: 'text', text }],
+      session,
+    );
+  }
+
+  /**
+   * 构建带有自定义 Parts 数组的 A2A 请求
+   * 支持 TextPart, DataPart, FilePart 的任意组合
+   */
+  private buildRequestWithParts(
+    method: 'message/send' | 'message/stream',
+    parts: A2APart[],
+    session: A2ASession
+  ): A2ARequest {
     // 构建 metadata（如果有 accountId）
     const metadata = this.config.auth?.accountId
       ? { accountId: this.config.auth.accountId }
@@ -237,15 +254,12 @@ export class A2AClient {
           role: 'user',
           kind: 'message',
           messageId: crypto.randomUUID(),
-          parts: [
-            {
-              kind: 'text',
-              type: 'text',
-              text,
-            },
-          ],
+          parts,
+          // contextId must be inside message object per A2A protocol
+          ...(session.contextId && { contextId: session.contextId }),
+          // taskId for continuing input-required tasks
+          ...(session.taskId && { taskId: session.taskId }),
         },
-        ...(session.contextId && { contextId: session.contextId }),
         ...(metadata && { metadata }),
       },
       id: `req-${Date.now()}`,

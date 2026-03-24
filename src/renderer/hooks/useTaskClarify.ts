@@ -1,6 +1,15 @@
 /**
  * Task-clarify 提交 hook
  * 处理 task-clarify 表单提交并发送到 A2A 后端
+ *
+ * 支持两种格式:
+ * 1. XML tool call: <tool_result><task-clarify>{...}</task-clarify></tool_result>
+ * 2. Native tool call: {"tool_result": {"tool_name": "task_clarify", "tool_call_id": "xxx", "result": {...}}}
+ *
+ * taskId 续传机制:
+ * - 当 task 状态变为 input-required 时，IPC 层会自动保存 taskId 到 conversation.currentTaskId
+ * - 提交 tool result 时，会自动使用保存的 taskId
+ * - 这确保了响应会被发送到同一个 task，而不是创建新 task
  */
 
 import { useCallback } from 'react';
@@ -26,6 +35,23 @@ import type { UserMessage, A2ARequest, JsonRpcLogEntry } from '../../shared/type
 function formatToolResultMessage(responses: Record<string, string | string[]>): string {
   const content = JSON.stringify(responses);
   return `<tool_result><task-clarify>${content}</task-clarify></tool_result>`;
+}
+
+/**
+ * 格式化 task-clarify 响应为 native tool call JSON 格式
+ */
+function formatNativeToolResultMessage(
+  responses: Record<string, string | string[]>,
+  toolCallId: string,
+): string {
+  const result = JSON.stringify({
+    tool_result: {
+      tool_name: 'task_clarify',
+      tool_call_id: toolCallId,
+      result: responses,
+    },
+  });
+  return result;
 }
 
 /**
@@ -59,13 +85,16 @@ export function useTaskClarify() {
   }, [setDebugLogs, currentConversation]);
 
   const submitTaskClarify = useCallback(
-    async (responses: Record<string, string | string[]>) => {
+    async (responses: Record<string, string | string[]>, toolCallId?: string) => {
       if (!currentConversation || streaming) {
         throw new Error('Cannot submit: no conversation or already streaming');
       }
 
-      // 格式化为 tool_result XML
-      const messageContent = formatToolResultMessage(responses);
+      // 根据是否有 toolCallId 选择格式
+      // A2A 使用 native tool call 模式，所以有 toolCallId 时用 native 格式
+      const messageContent = toolCallId
+        ? formatNativeToolResultMessage(responses, toolCallId)
+        : formatToolResultMessage(responses);
 
       // 创建用户消息（工具结果）
       const userMessage: UserMessage = {
@@ -103,21 +132,39 @@ export function useTaskClarify() {
               kind: 'message',
               messageId: uuidv4(),
               parts: [{ kind: 'text', type: 'text', text: messageContent }],
+              // contextId must be inside message object per A2A protocol
+              ...(currentConversation.contextId && { contextId: currentConversation.contextId }),
+              // taskId for continuing input-required tasks (A2A protocol)
+              ...(currentConversation.currentTaskId && { taskId: currentConversation.currentTaskId }),
             },
-            ...(currentConversation.contextId && { contextId: currentConversation.contextId }),
             ...(metadata && { metadata }),
           },
           id: `req-${Date.now()}`,
         };
 
-        // 记录请求到调试日志（包含 messageId 用于关联）
+        // 记录请求到调试日志（包含 messageId 和 contextId 用于追踪）
+        const logMethod = toolCallId
+          ? 'message/stream (native task-clarify)'
+          : 'message/stream (task-clarify)';
+
+        // 记录 contextId 和 taskId 传递情况
         addDebugLog({
           direction: 'request',
           messageId: userMessage.id,
           request: {
-            method: 'message/stream (task-clarify)',
+            method: logMethod,
             endpoint: requestEndpoint,
             body: requestBody,
+            _contextIdInfo: {
+              usingContextId: currentConversation.contextId || null,
+              usingTaskId: currentConversation.currentTaskId || null,
+              conversationId: currentConversation.id,
+              note: currentConversation.currentTaskId
+                ? 'Continuing input-required task (taskId passed)'
+                : currentConversation.contextId
+                  ? 'Reusing existing session (contextId passed)'
+                  : 'No contextId - will create new session',
+            },
           },
         });
 

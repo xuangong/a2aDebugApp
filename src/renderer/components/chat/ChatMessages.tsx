@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useMemo } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
-import { messagesAtom, streamingAtom, streamingContentAtom, viewModeAtom, selectedMessageIdAtom, chatSearchQueryAtom } from '../../atoms/chat-atoms';
+import { messagesAtom, streamingAtom, streamingContentAtom, streamingToolCallsAtom, streamingToolResultsAtom, viewModeAtom, selectedMessageIdAtom, chatSearchQueryAtom } from '../../atoms/chat-atoms';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { StreamingMessage } from './StreamingMessage';
@@ -12,13 +12,15 @@ import type { AssistantMessage as AssistantMessageType } from '../../../shared/t
 
 interface ChatMessagesProps {
   /** task-clarify 表单提交回调 */
-  onSubmitTaskClarify?: (responses: Record<string, string | string[]>) => Promise<void>;
+  onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }
 
 export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
   const messages = useAtomValue(messagesAtom);
   const streaming = useAtomValue(streamingAtom);
   const streamingContent = useAtomValue(streamingContentAtom);
+  const streamingToolCalls = useAtomValue(streamingToolCallsAtom);
+  const streamingToolResults = useAtomValue(streamingToolResultsAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const [selectedMessageId, setSelectedMessageId] = useAtom(selectedMessageIdAtom);
   const searchQuery = useAtomValue(chatSearchQueryAtom);
@@ -51,7 +53,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
   // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, streamingToolCalls]);
 
   // 点击消息时设置选中状态（toggle）
   const handleMessageClick = (messageId: string) => {
@@ -65,6 +67,9 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
       setSelectedMessageId(null);
     }
   };
+
+  // Check if we have any streaming content to show
+  const hasStreamingContent = streaming && (streamingContent || streamingToolCalls.length > 0);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4" onClick={handleContainerClick}>
@@ -91,13 +96,18 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
           )
         ))}
 
-        {/* 流式消息 - 实时渲染 XML 工具调用 */}
-        {streaming && streamingContent && (
-          <StreamingMessage content={streamingContent} viewMode={viewMode} />
+        {/* 流式消息 - 实时渲染 XML 工具调用和 Native Tool Calls */}
+        {hasStreamingContent && (
+          <StreamingMessage
+            content={streamingContent}
+            viewMode={viewMode}
+            streamingToolCalls={streamingToolCalls}
+            streamingToolResults={streamingToolResults}
+          />
         )}
 
         {/* 加载指示器 - 等待首个内容 */}
-        {streaming && !streamingContent && (
+        {streaming && !hasStreamingContent && (
           <div className="flex justify-start">
             <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3">
               <div className="flex items-center gap-1">

@@ -30,7 +30,23 @@ function getA2AClient(endpoint: string, auth?: AuthConfig): A2AClient {
 function getSession(conversationId: string): A2ASession {
   let session = sessions.get(conversationId);
   if (!session) {
-    session = { contextId: null, conversationId };
+    // Try to load contextId and currentTaskId from persisted conversation data
+    const conversations = conversationManager.listConversations();
+    const conversation = conversations.find(c => c.id === conversationId);
+    const persistedContextId = conversation?.contextId || null;
+    const persistedTaskId = conversation?.currentTaskId;
+
+    console.log('[getSession] Creating new session:', {
+      conversationId,
+      persistedContextId,
+      persistedTaskId,
+    });
+
+    session = {
+      contextId: persistedContextId,
+      conversationId,
+      taskId: persistedTaskId,
+    };
     sessions.set(conversationId, session);
   }
   return session;
@@ -118,6 +134,13 @@ export function registerIpcHandlers(): void {
     const session = getSession(conversationId);
     const window = BrowserWindow.fromWebContents(event.sender);
 
+    console.log('[IPC A2A_STREAM] Starting request:', {
+      conversationId,
+      sessionContextId: session.contextId,
+      sessionTaskId: session.taskId,
+      messagePreview: message?.substring(0, 100),
+    });
+
     if (!window) return;
 
     try {
@@ -128,12 +151,53 @@ export function registerIpcHandlers(): void {
             data: streamEvent.data,
           });
 
-          // 更新 contextId
-          if (streamEvent.data.contextId && !session.contextId) {
+          // contextId 现在由调用方预生成，后端会用它作为 thread_id
+          // 这里只需要验证后端返回的 contextId 与我们发送的一致
+          if (streamEvent.data.contextId && streamEvent.data.contextId !== session.contextId) {
+            console.log('[IPC A2A_STREAM] contextId mismatch - updating to backend value:', {
+              conversationId,
+              expectedContextId: session.contextId,
+              receivedContextId: streamEvent.data.contextId,
+            });
             session.contextId = streamEvent.data.contextId;
             await conversationManager.updateConversation(conversationId, {
               contextId: session.contextId,
             });
+          }
+
+          // Track taskId for input-required state continuation
+          // When task enters input-required, save taskId for subsequent tool result submission
+          if (streamEvent.data.kind === 'status-update') {
+            const statusUpdate = streamEvent.data as {
+              taskId: string;
+              status: { state: string };
+            };
+            const state = statusUpdate.status?.state;
+
+            if (state === 'input-required') {
+              // Save taskId for tool result continuation
+              session.taskId = statusUpdate.taskId;
+              console.log('[IPC A2A_STREAM] Task requires input, saving taskId:', {
+                conversationId,
+                taskId: session.taskId,
+              });
+              await conversationManager.updateConversation(conversationId, {
+                currentTaskId: session.taskId,
+              });
+            } else if (state === 'completed' || state === 'failed' || state === 'canceled') {
+              // Task ended, clear taskId
+              if (session.taskId) {
+                console.log('[IPC A2A_STREAM] Task ended, clearing taskId:', {
+                  conversationId,
+                  previousTaskId: session.taskId,
+                  finalState: state,
+                });
+                session.taskId = undefined;
+                await conversationManager.updateConversation(conversationId, {
+                  currentTaskId: undefined,
+                });
+              }
+            }
           }
         } else if (streamEvent.type === 'complete') {
           window.webContents.send(IPC_CHANNELS.A2A_STREAM_COMPLETE, {

@@ -8,6 +8,7 @@ import { currentConversationAtom, agentCardAtom } from '../../atoms/chat-atoms';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages } from './ChatMessages';
 import { ChatInput } from './ChatInput';
+import { TaskStatusBar } from './TaskStatusBar';
 import { ConnectionPanel } from '../agent/ConnectionPanel';
 import { DebugPanel } from '../debug/DebugPanel';
 import { useTaskClarify } from '../../hooks/useTaskClarify';
@@ -51,6 +52,7 @@ export function ChatView() {
       {/* 聊天主区域 */}
       <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader />
+        <TaskStatusBar />
         <ChatMessages onSubmitTaskClarify={submitTaskClarify} />
         <ChatInput />
       </div>
