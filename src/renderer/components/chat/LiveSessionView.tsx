@@ -115,7 +115,7 @@ export function LiveSessionView({ contextId }: LiveSessionViewProps) {
           <div className="w-full space-y-4">
             {messages.map((message) =>
               message.role === 'user' ? (
-                <UserMessage key={message.id} message={message} />
+                <UserMessage key={message.id} message={message} viewMode={viewMode} />
               ) : (
                 <AssistantMessage
                   key={message.id}
@@ -131,7 +131,7 @@ export function LiveSessionView({ contextId }: LiveSessionViewProps) {
       </div>
 
       {/* 调试面板 */}
-      <DebugPanel />
+      <DebugPanel messages={messages} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 /**
  * 消息输入组件
+ * 支持多个对话同时 streaming，切换对话不中断后台 streaming
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -8,118 +9,380 @@ import { Send, Square } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   currentConversationAtom,
-  messagesAtom,
+  conversationsAtom,
+  messagesMapAtom,
   streamingAtom,
   streamingContentAtom,
   streamingChunksAtom,
+  streamingMapAtom,
+  getConversationStreamingState,
   endpointAtom,
   errorAtom,
   authConfigAtom,
-  debugLogsAtom,
+  debugLogsMapAtom,
   currentStreamingMessageIdAtom,
+  streamingToolCallsAtom,
+  streamingToolResultsAtom,
+  streamingFileArtifactsAtom,
+  tasksMapAtom,
+  type TaskInfo as AtomTaskInfo,
+  type ConversationStreamingState,
 } from '../../atoms/chat-atoms';
-import type { UserMessage, AssistantMessage, A2AResult, JsonRpcLogEntry, A2ARequest } from '../../../shared/types';
-import { extractPartsFromResult } from '../../../shared/types';
+import type { UserMessage, AssistantMessage, A2AResult, JsonRpcLogEntry, A2ARequest, A2AArtifactUpdateResult, NativeToolCall, ToolResultData, FileArtifact, Message, A2AFilePart } from '../../../shared/types';
+import { extractPartsFromResult, ToolCallAccumulator, extractContextIdFromResult, extractToolResultsFromResult, extractTaskInfoFromResult, getFileArtifactType } from '../../../shared/types';
+
+// Per-conversation accumulator state
+interface ConversationAccumulators {
+  toolCalls: ToolCallAccumulator;
+  toolResults: Map<string, ToolResultData>;
+  fileArtifacts: Map<string, FileArtifact>;
+}
 
 export function ChatInput() {
   const [input, setInput] = useState('');
+  // Current conversation's streaming state (for UI display)
   const [streaming, setStreaming] = useAtom(streamingAtom);
-  const [streamingContent, setStreamingContent] = useAtom(streamingContentAtom);
-  const [streamingChunks, setStreamingChunks] = useAtom(streamingChunksAtom);
+  const setStreamingContent = useSetAtom(streamingContentAtom);
+  const setStreamingChunks = useSetAtom(streamingChunksAtom);
+  const setStreamingToolCalls = useSetAtom(streamingToolCallsAtom);
+  const setStreamingToolResults = useSetAtom(streamingToolResultsAtom);
+  const setStreamingFileArtifacts = useSetAtom(streamingFileArtifactsAtom);
+  const setCurrentStreamingMessageId = useSetAtom(currentStreamingMessageIdAtom);
+
+  // Direct access to per-conversation maps for updating any conversation
+  const [streamingMap, setStreamingMap] = useAtom(streamingMapAtom);
+  const [messagesMap, setMessagesMap] = useAtom(messagesMapAtom);
+
+  // Ref to hold latest streamingMap for use in event handlers without re-registering
+  const streamingMapRef = useRef(streamingMap);
+  useEffect(() => {
+    streamingMapRef.current = streamingMap;
+  }, [streamingMap]);
+
   const currentConversation = useAtomValue(currentConversationAtom);
-  const [messages, setMessages] = useAtom(messagesAtom);
+  const setConversations = useSetAtom(conversationsAtom);
   const endpoint = useAtomValue(endpointAtom);
   const authConfig = useAtomValue(authConfigAtom);
   const setError = useSetAtom(errorAtom);
-  const setDebugLogs = useSetAtom(debugLogsAtom);
-  const [currentStreamingMessageId, setCurrentStreamingMessageId] = useAtom(currentStreamingMessageIdAtom);
+  const setDebugLogsMap = useSetAtom(debugLogsMapAtom);
+  const setTasksMap = useSetAtom(tasksMapAtom);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 使用 ref 存储最新的值，避免闭包问题
-  const streamingContentRef = useRef('');
-  const streamingChunksRef = useRef<A2AResult[]>([]);
-  const currentStreamingMessageIdRef = useRef<string | null>(null);
+  // Per-conversation accumulators (refs don't re-render, perfect for background updates)
+  const accumulatorsRef = useRef<Map<string, ConversationAccumulators>>(new Map());
 
-  // 添加调试日志（同时保存到文件）
-  const addDebugLog = useCallback((entry: Omit<JsonRpcLogEntry, 'id' | 'timestamp'>) => {
+  const getOrCreateAccumulators = useCallback((conversationId: string): ConversationAccumulators => {
+    let acc = accumulatorsRef.current.get(conversationId);
+    if (!acc) {
+      acc = {
+        toolCalls: new ToolCallAccumulator(),
+        toolResults: new Map(),
+        fileArtifacts: new Map(),
+      };
+      accumulatorsRef.current.set(conversationId, acc);
+    }
+    return acc;
+  }, []);
+
+  const resetAccumulators = useCallback((conversationId: string) => {
+    const acc = accumulatorsRef.current.get(conversationId);
+    if (acc) {
+      acc.toolCalls.reset();
+      acc.toolResults.clear();
+      acc.fileArtifacts.clear();
+    }
+  }, []);
+
+  // Helper to update streaming state for a specific conversation
+  const updateConversationStreaming = useCallback((
+    conversationId: string,
+    updater: (state: ConversationStreamingState) => Partial<ConversationStreamingState>
+  ) => {
+    setStreamingMap((map) => {
+      const newMap = new Map(map);
+      const currentState = getConversationStreamingState(newMap, conversationId);
+      const updates = updater(currentState);
+      newMap.set(conversationId, { ...currentState, ...updates });
+      return newMap;
+    });
+  }, [setStreamingMap]);
+
+  // Helper to add message to a specific conversation (with deduplication)
+  const addMessageToConversation = useCallback((conversationId: string, message: Message) => {
+    setMessagesMap((map) => {
+      const newMap = new Map(map);
+      const messages = newMap.get(conversationId) || [];
+      // Dedupe by message id
+      if (messages.some(m => m.id === message.id)) {
+        return map; // Already exists, don't add
+      }
+      newMap.set(conversationId, [...messages, message]);
+      return newMap;
+    });
+  }, [setMessagesMap]);
+
+  // 添加调试日志（同时保存到文件，per-conversation）
+  const addDebugLog = useCallback((conversationId: string, entry: Omit<JsonRpcLogEntry, 'id' | 'timestamp'>) => {
     const logEntry: JsonRpcLogEntry = {
       id: uuidv4(),
       timestamp: Date.now(),
       ...entry,
     };
-    setDebugLogs((prev) => [...prev, logEntry]);
+    setDebugLogsMap((map) => {
+      const newMap = new Map(map);
+      const logs = newMap.get(conversationId) || [];
+      newMap.set(conversationId, [...logs, logEntry]);
+      return newMap;
+    });
 
     // 异步保存到文件
-    if (currentConversation) {
-      window.electronAPI.saveDebugLog(currentConversation.id, logEntry).catch(console.error);
+    window.electronAPI.saveDebugLog(conversationId, logEntry).catch(console.error);
+  }, [setDebugLogsMap]);
+
+  // Finalize streaming message for a specific conversation
+  const finalizeStreamingMessage = useCallback(async (conversationId: string) => {
+    const state = getConversationStreamingState(streamingMapRef.current, conversationId);
+    const acc = accumulatorsRef.current.get(conversationId);
+    const finalToolCalls = acc?.toolCalls.getAllToolCalls() || [];
+    // Use fileArtifacts from accumulator ref (more reliable than streamingMap state)
+    const finalFileArtifacts = acc?.fileArtifacts && acc.fileArtifacts.size > 0
+      ? Array.from(acc.fileArtifacts.values())
+      : (state.fileArtifacts.length > 0 ? state.fileArtifacts : undefined);
+
+    const assistantMessage: AssistantMessage = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: state.content,
+      rawResponse: state.chunks,
+      nativeToolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+      fileArtifacts: finalFileArtifacts,
+      createdAt: Date.now(),
+    };
+
+    // Add message to the specific conversation
+    addMessageToConversation(conversationId, assistantMessage);
+    await window.electronAPI.saveMessage(conversationId, assistantMessage);
+
+    // Update debug logs with response message ID (per-conversation)
+    const requestMessageId = state.messageId;
+    if (requestMessageId) {
+      setDebugLogsMap((map) => {
+        const newMap = new Map(map);
+        const logs = newMap.get(conversationId) || [];
+        const updatedLogs = logs.map((log) =>
+          log.messageId === requestMessageId
+            ? { ...log, responseMessageId: assistantMessage.id }
+            : log
+        );
+        newMap.set(conversationId, updatedLogs);
+        window.electronAPI.saveDebugLogs(conversationId, updatedLogs).catch(console.error);
+        return newMap;
+      });
     }
-  }, [setDebugLogs, currentConversation]);
 
-  // 同步 ref 值
+    // Clear streaming state for this conversation
+    updateConversationStreaming(conversationId, () => ({
+      streaming: false,
+      content: '',
+      chunks: [],
+      toolCalls: [],
+      toolResults: new Map(),
+      fileArtifacts: [],
+      messageId: null,
+    }));
+
+    resetAccumulators(conversationId);
+  }, [addMessageToConversation, setDebugLogsMap, updateConversationStreaming, resetAccumulators]);
+
+  // Global streaming event listeners (handle all conversations)
   useEffect(() => {
-    streamingContentRef.current = streamingContent;
-  }, [streamingContent]);
-
-  useEffect(() => {
-    streamingChunksRef.current = streamingChunks;
-  }, [streamingChunks]);
-
-  useEffect(() => {
-    currentStreamingMessageIdRef.current = currentStreamingMessageId;
-  }, [currentStreamingMessageId]);
-
-  // 订阅流式事件
-  useEffect(() => {
-    if (!currentConversation) return;
-
     const unsubChunk = window.electronAPI.onA2AStreamChunk(({ conversationId, data }) => {
-      if (conversationId !== currentConversation.id) return;
+      const acc = getOrCreateAccumulators(conversationId);
+      const state = getConversationStreamingState(streamingMapRef.current, conversationId);
 
-      // 记录 SSE 事件到调试日志（包含 messageId 用于关联）
-      addDebugLog({
+      // Log SSE event
+      addDebugLog(conversationId, {
         direction: 'sse-event',
-        messageId: currentStreamingMessageIdRef.current || undefined,
+        messageId: state.messageId || undefined,
         sseEvent: {
           eventType: 'chunk',
           data,
         },
       });
 
-      setStreamingChunks((prev) => [...prev, data]);
+      // Verify contextId matches
+      const contextId = extractContextIdFromResult(data);
+      if (contextId && contextId !== conversationId) {
+        console.warn('[ChatInput] contextId mismatch:', { conversationId, receivedContextId: contextId });
+      }
 
-      // 提取文本内容（支持 message 和 status-update 两种格式）
+      // Extract and track Task state (per-conversation)
+      const taskInfo = extractTaskInfoFromResult(data);
+      if (taskInfo) {
+        setTasksMap((map) => {
+          const newMap = new Map(map);
+          const tasks = newMap.get(conversationId) || [];
+          const existingIndex = tasks.findIndex((t) => t.taskId === taskInfo.taskId);
+          const now = Date.now();
+          const newTask: AtomTaskInfo = {
+            taskId: taskInfo.taskId,
+            contextId: taskInfo.contextId,
+            state: taskInfo.state,
+            createdAt: existingIndex >= 0 ? tasks[existingIndex].createdAt : now,
+            updatedAt: now,
+            messageId: state.messageId || undefined,
+          };
+
+          if (existingIndex >= 0) {
+            const updated = [...tasks];
+            updated[existingIndex] = newTask;
+            newMap.set(conversationId, updated);
+          } else {
+            newMap.set(conversationId, [...tasks, newTask]);
+          }
+          return newMap;
+        });
+
+        // Update conversation's currentTaskId
+        if (taskInfo.state === 'input-required') {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conversationId ? { ...c, currentTaskId: taskInfo.taskId } : c
+            )
+          );
+          window.electronAPI.updateConversation(conversationId, {
+            currentTaskId: taskInfo.taskId,
+          }).catch(console.error);
+        } else if (['completed', 'failed', 'canceled'].includes(taskInfo.state)) {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conversationId ? { ...c, currentTaskId: undefined } : c
+            )
+          );
+          window.electronAPI.updateConversation(conversationId, {
+            currentTaskId: undefined,
+          }).catch(console.error);
+        }
+      }
+
+      // Handle artifact-update events
+      if (data.kind === 'artifact-update') {
+        const artifactUpdate = data as A2AArtifactUpdateResult;
+        const artifactName = artifactUpdate.artifact.name;
+
+        if (artifactName === 'tool_results') {
+          const newToolResults = extractToolResultsFromResult(artifactUpdate);
+          for (const tr of newToolResults) {
+            acc.toolResults.set(tr.tool_call_id, tr);
+          }
+          updateConversationStreaming(conversationId, () => ({
+            toolResults: new Map(acc.toolResults),
+          }));
+          return;
+        }
+
+        if (artifactName === 'tool_calls') {
+          acc.toolCalls.processArtifactUpdate(artifactUpdate);
+          updateConversationStreaming(conversationId, () => ({
+            toolCalls: acc.toolCalls.getAllToolCalls(),
+          }));
+          return;
+        }
+
+        // Handle file artifacts from artifact-update (FilePart)
+        for (const part of artifactUpdate.artifact.parts) {
+          if (part.kind === 'file') {
+            const filePart = part as A2AFilePart;
+            const fileName = filePart.file.name;
+            const mimeType = filePart.file.mimeType;
+            const uri = filePart.file.uri;
+            if (uri && fileName) {
+              const fileArtifact: FileArtifact = {
+                id: artifactUpdate.artifact.artifactId,
+                file_path: artifactName || fileName,
+                file_name: fileName,
+                mime_type: mimeType,
+                download_url: uri,
+                type: getFileArtifactType(mimeType, fileName),
+                createdAt: Date.now(),
+              };
+              acc.fileArtifacts.set(fileName, fileArtifact);
+              updateConversationStreaming(conversationId, () => ({
+                fileArtifacts: Array.from(acc.fileArtifacts.values()),
+              }));
+            }
+          }
+        }
+        return;
+      }
+
+      // Handle file_artifacts from status-update DataPart (backend-provided)
+      if (data.kind === 'status-update') {
+        const statusParts = extractPartsFromResult(data);
+        for (const part of statusParts) {
+          if (part.kind === 'data' && 'data' in part) {
+            const partData = part.data as Record<string, unknown>;
+            // Backend sends file_artifacts array in DataPart
+            if (Array.isArray(partData.file_artifacts)) {
+              for (const fa of partData.file_artifacts) {
+                if (fa && typeof fa === 'object' && fa.file_name) {
+                  const fileArtifact: FileArtifact = {
+                    id: (fa as Record<string, unknown>).id as string || `fa-${Date.now()}`,
+                    file_path: (fa as Record<string, unknown>).file_path as string || '',
+                    file_name: fa.file_name as string,
+                    mime_type: (fa as Record<string, unknown>).mime_type as string || 'application/octet-stream',
+                    download_url: (fa as Record<string, unknown>).download_url as string || '',
+                    type: getFileArtifactType(
+                      (fa as Record<string, unknown>).mime_type as string || '',
+                      fa.file_name as string
+                    ),
+                    createdAt: Date.now(),
+                  };
+                  acc.fileArtifacts.set(fileArtifact.file_name, fileArtifact);
+                }
+              }
+              updateConversationStreaming(conversationId, () => ({
+                fileArtifacts: Array.from(acc.fileArtifacts.values()),
+              }));
+            }
+          }
+        }
+      }
+
+      // Extract text content
       const parts = extractPartsFromResult(data);
       const textParts = parts
         .filter((p) => p.kind === 'text' && 'text' in p)
         .map((p) => (p as { text: string }).text);
 
-      if (textParts.length > 0) {
-        setStreamingContent((prev) => prev + textParts.join(''));
-      }
+      // Update streaming state for this conversation
+      updateConversationStreaming(conversationId, (prevState) => ({
+        chunks: [...prevState.chunks, data],
+        content: prevState.content + textParts.join(''),
+        fileArtifacts: Array.from(acc.fileArtifacts.values()),
+      }));
     });
 
     const unsubComplete = window.electronAPI.onA2AStreamComplete(({ conversationId }) => {
-      if (conversationId !== currentConversation.id) return;
+      const state = getConversationStreamingState(streamingMapRef.current, conversationId);
 
-      // 记录完成事件（包含 messageId 用于关联）
-      addDebugLog({
+      addDebugLog(conversationId, {
         direction: 'sse-event',
-        messageId: currentStreamingMessageIdRef.current || undefined,
+        messageId: state.messageId || undefined,
         sseEvent: {
           eventType: 'complete',
         },
       });
 
-      finalizeStreamingMessage();
+      finalizeStreamingMessage(conversationId);
     });
 
     const unsubError = window.electronAPI.onA2AStreamError(({ conversationId, error }) => {
-      if (conversationId !== currentConversation.id) return;
+      const state = getConversationStreamingState(streamingMapRef.current, conversationId);
 
-      // 记录错误事件（包含 messageId 用于关联）
-      addDebugLog({
+      addDebugLog(conversationId, {
         direction: 'sse-event',
-        messageId: currentStreamingMessageIdRef.current || undefined,
+        messageId: state.messageId || undefined,
         sseEvent: {
           eventType: 'error',
           error,
@@ -127,10 +390,19 @@ export function ChatInput() {
       });
 
       setError(`A2A Error: ${error.message} (code: ${error.code})`);
-      setStreaming(false);
-      setStreamingContent('');
-      setStreamingChunks([]);
-      setCurrentStreamingMessageId(null);
+
+      // Clear streaming state for this conversation
+      updateConversationStreaming(conversationId, () => ({
+        streaming: false,
+        content: '',
+        chunks: [],
+        toolCalls: [],
+        toolResults: new Map(),
+        fileArtifacts: [],
+        messageId: null,
+      }));
+
+      resetAccumulators(conversationId);
     });
 
     return () => {
@@ -138,77 +410,66 @@ export function ChatInput() {
       unsubComplete();
       unsubError();
     };
-  }, [currentConversation?.id]);
-
-  const finalizeStreamingMessage = useCallback(async () => {
-    if (!currentConversation) return;
-
-    // 使用 ref 中的最新值
-    const content = streamingContentRef.current;
-    const chunks = streamingChunksRef.current;
-    const requestMessageId = currentStreamingMessageIdRef.current;
-
-    const assistantMessage: AssistantMessage = {
-      id: uuidv4(),
-      role: 'assistant',
-      content: content,
-      rawResponse: chunks,
-      createdAt: Date.now(),
-    };
-
-    setMessages((prev) => [...prev, assistantMessage]);
-    await window.electronAPI.saveMessage(currentConversation.id, assistantMessage);
-
-    // 更新关联日志的 responseMessageId，使点击 assistant 消息也能高亮对应日志
-    if (requestMessageId) {
-      setDebugLogs((prev) => {
-        const updatedLogs = prev.map((log) =>
-          log.messageId === requestMessageId
-            ? { ...log, responseMessageId: assistantMessage.id }
-            : log
-        );
-        // 异步保存更新后的日志到文件
-        window.electronAPI.saveDebugLogs(currentConversation.id, updatedLogs).catch(console.error);
-        return updatedLogs;
-      });
-    }
-
-    setStreaming(false);
-    setStreamingContent('');
-    setStreamingChunks([]);
-    setCurrentStreamingMessageId(null);
-  }, [currentConversation, setMessages, setStreaming, setStreamingContent, setStreamingChunks, setCurrentStreamingMessageId, setDebugLogs]);
+  }, [getOrCreateAccumulators, addDebugLog, setTasksMap, setConversations, updateConversationStreaming, finalizeStreamingMessage, resetAccumulators, setError]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
 
     if (!input.trim() || !currentConversation || streaming) return;
 
+    const conversationId = currentConversation.id;
+    const messageContent = input.trim();
+    const now = Date.now();
     const userMessage: UserMessage = {
       id: uuidv4(),
       role: 'user',
-      content: input.trim(),
-      createdAt: Date.now(),
+      content: messageContent,
+      createdAt: now,
     };
 
-    // 添加用户消息
-    setMessages((prev) => [...prev, userMessage]);
-    await window.electronAPI.saveMessage(currentConversation.id, userMessage);
+    // Check if this is the first message - update conversation title
+    const existingMessages = messagesMap.get(conversationId) || [];
+    if (existingMessages.length === 0) {
+      // Format: "First query..." + time (HH:MM)
+      const maxLen = 20;
+      const truncatedQuery = messageContent.length > maxLen
+        ? messageContent.substring(0, maxLen) + '...'
+        : messageContent;
+      const timeStr = new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const newTitle = `${truncatedQuery} ${timeStr}`;
+
+      // Update conversation title in state
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId ? { ...c, title: newTitle, updatedAt: now } : c
+        )
+      );
+      // Persist to file
+      window.electronAPI.updateConversation(conversationId, { title: newTitle }).catch(console.error);
+    }
+
+    // Add user message to the conversation
+    addMessageToConversation(conversationId, userMessage);
+    await window.electronAPI.saveMessage(conversationId, userMessage);
 
     setInput('');
-    setStreaming(true);
-    setStreamingContent('');
-    setStreamingChunks([]);
 
-    // 设置当前流式消息 ID（用于关联后续 SSE 事件）
-    setCurrentStreamingMessageId(userMessage.id);
+    // Initialize streaming state for this conversation
+    resetAccumulators(conversationId);
+    updateConversationStreaming(conversationId, () => ({
+      streaming: true,
+      content: '',
+      chunks: [],
+      toolCalls: [],
+      toolResults: new Map(),
+      fileArtifacts: [],
+      messageId: userMessage.id,
+    }));
 
     try {
-      // 发起流式请求（传递认证配置）
       const auth = authConfig.bearerToken || authConfig.accountId ? authConfig : undefined;
       const requestEndpoint = currentConversation.endpoint || endpoint;
 
-      // 构建请求体用于调试日志
       const metadata = auth?.accountId ? { accountId: auth.accountId } : undefined;
       const requestBody: A2ARequest = {
         jsonrpc: '2.0',
@@ -219,41 +480,50 @@ export function ChatInput() {
             kind: 'message',
             messageId: uuidv4(),
             parts: [{ kind: 'text', type: 'text', text: userMessage.content }],
+            ...(conversationId && { contextId: conversationId }),
           },
-          ...(currentConversation.contextId && { contextId: currentConversation.contextId }),
           ...(metadata && { metadata }),
         },
         id: `req-${Date.now()}`,
       };
 
-      // 记录请求到调试日志（包含 messageId 用于关联）
-      addDebugLog({
+      addDebugLog(conversationId, {
         direction: 'request',
         messageId: userMessage.id,
         request: {
           method: 'message/stream',
           endpoint: requestEndpoint,
           body: requestBody,
+          _contextIdInfo: {
+            usingContextId: conversationId || null,
+            conversationId: conversationId,
+            note: conversationId
+              ? 'Reusing existing session (contextId passed)'
+              : 'No contextId - will create new session',
+          },
         },
       });
 
       await window.electronAPI.a2aStream(
         requestEndpoint,
         userMessage.content,
-        currentConversation.id,
+        conversationId,
         auth
       );
     } catch (error) {
       setError(`Failed to send message: ${error}`);
-      setStreaming(false);
-      setCurrentStreamingMessageId(null);
+      updateConversationStreaming(conversationId, () => ({
+        streaming: false,
+        messageId: null,
+      }));
+      resetAccumulators(conversationId);
     }
   };
 
   const handleStop = async () => {
     if (!currentConversation) return;
     await window.electronAPI.a2aStop(currentConversation.id);
-    finalizeStreamingMessage();
+    await finalizeStreamingMessage(currentConversation.id);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -263,7 +533,7 @@ export function ChatInput() {
     }
   };
 
-  // 自动调整高度
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -274,9 +544,9 @@ export function ChatInput() {
   if (!currentConversation) return null;
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+    <div className="p-4 border-t border-apple-gray-300/60 dark:border-[#38383A] bg-white dark:bg-[#1C1C1E]">
       <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-3">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -285,7 +555,7 @@ export function ChatInput() {
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               disabled={streaming}
-              className="w-full px-4 py-3 pr-12 text-sm border border-gray-300 dark:border-gray-600 rounded-2xl bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none disabled:opacity-50"
+              className="apple-input pr-12 resize-none min-h-[48px] py-3"
               rows={1}
             />
           </div>
@@ -294,7 +564,7 @@ export function ChatInput() {
             <button
               type="button"
               onClick={handleStop}
-              className="p-3 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+              className="p-3 bg-apple-red text-white rounded-apple shadow-apple-sm hover:bg-apple-red/90 transition-all duration-apple active:scale-95"
               title="Stop generation"
             >
               <Square className="w-5 h-5 fill-current" />
@@ -303,7 +573,7 @@ export function ChatInput() {
             <button
               type="submit"
               disabled={!input.trim()}
-              className="p-3 bg-primary-500 text-white rounded-full hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="p-3 bg-apple-blue text-white rounded-apple shadow-apple-sm hover:bg-[#0066CC] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-apple active:scale-95"
               title="Send message"
             >
               <Send className="w-5 h-5" />

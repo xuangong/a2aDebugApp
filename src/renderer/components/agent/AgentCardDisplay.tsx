@@ -1,5 +1,6 @@
 /**
  * Agent Card 展示组件
+ * Apple Design System
  */
 
 import { Bot, Zap, Globe, FileText, Tag, CheckCircle, XCircle } from 'lucide-react';
@@ -14,12 +15,12 @@ interface AgentCardDisplayProps {
 export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplayProps) {
   if (loading) {
     return (
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="p-4 bg-apple-gray-100 dark:bg-[#2C2C2E] rounded-apple border border-apple-gray-200 dark:border-[#38383A]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
+          <div className="w-10 h-10 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple animate-pulse" />
           <div className="flex-1">
-            <div className="h-4 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-            <div className="h-3 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-apple-gray-200 dark:bg-[#38383A] rounded animate-pulse mb-2" />
+            <div className="h-3 w-48 bg-apple-gray-200 dark:bg-[#38383A] rounded animate-pulse" />
           </div>
         </div>
       </div>
@@ -28,34 +29,34 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
 
   if (error) {
     return (
-      <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-        <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+      <div className="p-4 bg-apple-red/10 rounded-apple border border-apple-red/20">
+        <div className="flex items-center gap-2 text-apple-red">
           <XCircle className="w-5 h-5" />
-          <span className="text-sm font-medium">Failed to load Agent Card</span>
+          <span className="text-apple-sm font-medium">Failed to load Agent Card</span>
         </div>
-        <p className="text-xs text-red-500 dark:text-red-400 mt-1">{error}</p>
+        <p className="text-apple-xs text-apple-red/80 mt-1">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 space-y-4">
+    <div className="p-4 bg-apple-gray-100 dark:bg-[#2C2C2E] rounded-apple border border-apple-gray-200 dark:border-[#38383A] space-y-4">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
-          <Bot className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+        <div className="w-12 h-12 bg-apple-blue/10 rounded-apple flex items-center justify-center flex-shrink-0">
+          <Bot className="w-6 h-6 text-apple-blue" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 truncate">
+          <h3 className="text-apple-base font-semibold text-apple-gray-900 dark:text-apple-gray-100 truncate">
             {agentCard.name}
           </h3>
           {agentCard.version && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-apple-xs text-apple-gray-500">
               v{agentCard.version}
             </span>
           )}
           {agentCard.description && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+            <p className="text-apple-sm text-apple-gray-600 dark:text-apple-gray-400 mt-1 line-clamp-2">
               {agentCard.description}
             </p>
           )}
@@ -65,7 +66,7 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
       {/* Capabilities */}
       {agentCard.capabilities && (
         <div className="space-y-2">
-          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          <h4 className="text-apple-xs font-medium text-apple-gray-500 uppercase tracking-wide">
             Capabilities
           </h4>
           <div className="flex flex-wrap gap-2">
@@ -88,23 +89,23 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
       {/* Skills */}
       {agentCard.skills && agentCard.skills.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          <h4 className="text-apple-xs font-medium text-apple-gray-500 uppercase tracking-wide">
             Skills ({agentCard.skills.length})
           </h4>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
+          <div className="space-y-2 max-h-48 overflow-y-auto">
             {agentCard.skills.map((skill) => (
               <div
                 key={skill.id}
-                className="p-2 bg-white dark:bg-gray-700 rounded-md border border-gray-100 dark:border-gray-600"
+                className="p-2 bg-white dark:bg-[#1C1C1E] rounded-apple-sm border border-apple-gray-200 dark:border-[#38383A]"
               >
                 <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <Zap className="w-4 h-4 text-apple-orange" />
+                  <span className="text-apple-sm font-medium text-apple-gray-800 dark:text-apple-gray-200">
                     {skill.name}
                   </span>
                 </div>
                 {skill.description && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                  <p className="text-apple-xs text-apple-gray-500 mt-1 ml-6">
                     {skill.description}
                   </p>
                 )}
@@ -113,7 +114,7 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
                     {skill.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-600 text-xs text-gray-600 dark:text-gray-300 rounded"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-apple-gray-200 dark:bg-[#38383A] text-apple-xs text-apple-gray-600 dark:text-apple-gray-400 rounded-apple-sm"
                       >
                         <Tag className="w-3 h-3" />
                         {tag}
@@ -128,7 +129,7 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
       )}
 
       {/* Provider & Documentation */}
-      <div className="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
+      <div className="flex flex-wrap gap-4 text-apple-xs text-apple-gray-500">
         {agentCard.provider?.organization && (
           <div className="flex items-center gap-1">
             <Globe className="w-3 h-3" />
@@ -140,7 +141,7 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
             href={agentCard.documentationUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-primary-500 hover:underline"
+            className="flex items-center gap-1 text-apple-blue hover:underline"
           >
             <FileText className="w-3 h-3" />
             <span>Documentation</span>
@@ -149,7 +150,7 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
       </div>
 
       {/* URL */}
-      <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
+      <div className="text-apple-xs text-apple-gray-400 truncate">
         {agentCard.url}
       </div>
     </div>
@@ -159,10 +160,10 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
 function CapabilityBadge({ label, enabled }: { label: string; enabled?: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-apple-xs ${
         enabled
-          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+          ? 'bg-apple-green/10 text-apple-green'
+          : 'bg-apple-gray-200 dark:bg-[#38383A] text-apple-gray-500'
       }`}
     >
       {enabled ? (

@@ -1,37 +1,51 @@
 /**
  * 流式消息组件
- * 用于实时渲染正在接收的 Agent 响应
- * - rendered 模式：实时解析 XML 工具调用并渲染卡片
- * - 其他模式：简单显示原始内容
+ * Apple Design System - 用于实时渲染正在接收的 Agent 响应
+ * Native tool calls only (XML tool calls deprecated)
  */
 
 import { useMemo } from 'react';
+import { useSetAtom } from 'jotai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2 } from 'lucide-react';
-import type { ViewMode } from '../../atoms/chat-atoms';
-import { parseXmlContent, type XmlCall } from '../../lib/xml-streaming-parser';
-import { ToolCallCard, CompleteCard, AskCard, TaskClarifyCard, PresentationPlannerCard, DateTimeCard } from '../ToolCallCard';
+import { Loader2, ExternalLink } from 'lucide-react';
+import type { ViewMode, SelectedToolCall } from '../../atoms/chat-atoms';
+import { selectedToolCallAtom, sidePanelTabAtom } from '../../atoms/chat-atoms';
+import { NativeToolCallCard, NativeTaskClarifyCard, NativeCompleteCard, NativeAskCard } from '../ToolCallCard';
+import type { NativeToolCall, ToolResultData } from '../../../shared/types';
+
+// Normalize tool name to match against known client tools
+// Handles: task_clarify, task-clarify, Task_clarify, etc.
+function normalizeToolName(name: string | null | undefined): string {
+  if (!name) return '';
+  return name.toLowerCase().replace(/_/g, '-');
+}
 
 interface StreamingMessageProps {
   content: string;
   viewMode: ViewMode;
+  /** Streaming native tool calls (accumulated from artifact-update events) */
+  streamingToolCalls?: NativeToolCall[];
+  /** Streaming tool results (received from artifact-update events) */
+  streamingToolResults?: Map<string, ToolResultData>;
+  /** Callback for submitting task-clarify responses */
+  onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }
 
-export function StreamingMessage({ content, viewMode }: StreamingMessageProps) {
+export function StreamingMessage({ content, viewMode, streamingToolCalls = [], streamingToolResults = new Map(), onSubmitTaskClarify }: StreamingMessageProps) {
   return (
-    <div className="flex justify-start w-full">
-      <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3">
+    <div className="flex justify-start w-full animate-fade-in">
+      <div className="w-full apple-message-assistant">
         <div className="space-y-2">
           {viewMode === 'rendered' ? (
-            <RenderedStreamingContent content={content} />
+            <RenderedStreamingContent content={content} streamingToolCalls={streamingToolCalls} streamingToolResults={streamingToolResults} onSubmitTaskClarify={onSubmitTaskClarify} />
           ) : (
-            <RawStreamingContent content={content} viewMode={viewMode} />
+            <RawStreamingContent content={content} viewMode={viewMode} streamingToolCalls={streamingToolCalls} streamingToolResults={streamingToolResults} />
           )}
-          {/* 流式光标 */}
-          <span className="inline-flex items-center gap-1 text-gray-400">
+          {/* 流式光标 - Apple style */}
+          <span className="inline-flex items-center gap-1.5 text-apple-gray-400">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span className="text-xs">Generating...</span>
+            <span className="text-apple-xs">Generating...</span>
           </span>
         </div>
       </div>
@@ -39,73 +53,73 @@ export function StreamingMessage({ content, viewMode }: StreamingMessageProps) {
   );
 }
 
-/** Rendered 模式：实时解析 XML 并渲染 */
-function RenderedStreamingContent({ content }: { content: string }) {
-  // 使用流式解析器解析 XML 工具调用
-  const { plainText, xmlCalls, parsingXmlCall } = useMemo(
-    () => parseXmlContent(content),
-    [content]
-  );
+/** Rendered 模式：渲染 Native Tool Calls */
+function RenderedStreamingContent({ content, streamingToolCalls, streamingToolResults, onSubmitTaskClarify }: {
+  content: string;
+  streamingToolCalls: NativeToolCall[];
+  streamingToolResults: Map<string, ToolResultData>;
+  onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
+}) {
+  const hasNativeToolCalls = streamingToolCalls.length > 0;
 
-  // 合并已完成的和正在解析的 XML 调用
-  const allXmlCalls: XmlCall[] = useMemo(() => {
-    const calls = [...xmlCalls];
-    if (parsingXmlCall) {
-      calls.push(parsingXmlCall);
-    }
-    return calls;
-  }, [xmlCalls, parsingXmlCall]);
-
-  if (allXmlCalls.length === 0) {
-    // 没有工具调用，直接渲染 Markdown
+  if (!hasNativeToolCalls) {
+    // No tool calls, just render Markdown
     return <MarkdownContent content={content} />;
   }
 
-  // 有工具调用，需要分段渲染
+  // Render text content + native tool calls
   const parts: React.ReactNode[] = [];
-  let lastIndex = 0;
 
-  for (const xmlCall of allXmlCalls) {
-    // 渲染工具调用前的文本
-    if (xmlCall.offsetInText > lastIndex) {
-      let textBefore = content.substring(lastIndex, xmlCall.offsetInText);
-      // 移除 XML 前后的 ``` 标记
-      textBefore = textBefore.replace(/```xml?\s*$/g, '').replace(/^\s*```\s*/g, '');
-      if (textBefore.trim()) {
-        parts.push(
-          <MarkdownContent key={`md-${lastIndex}`} content={textBefore} />
-        );
-      }
-    }
-
-    // 渲染工具调用组件
-    const toolKey = `tool-${xmlCall.toolCallId || xmlCall.name}-${xmlCall.offsetInText}`;
-    if (xmlCall.name === 'complete') {
-      parts.push(<CompleteCard key={toolKey} xmlCall={xmlCall} />);
-    } else if (xmlCall.name === 'ask') {
-      parts.push(<AskCard key={toolKey} xmlCall={xmlCall} />);
-    } else if (xmlCall.name === 'task-clarify') {
-      // 流式时不提供 onSubmit，因为还没完成
-      parts.push(<TaskClarifyCard key={toolKey} xmlCall={xmlCall} />);
-    } else if (xmlCall.name === 'presentation-planner') {
-      parts.push(<PresentationPlannerCard key={toolKey} xmlCall={xmlCall} />);
-    } else if (xmlCall.name === 'get-current-datetime') {
-      parts.push(<DateTimeCard key={toolKey} xmlCall={xmlCall} />);
-    } else {
-      parts.push(<ToolCallCard key={toolKey} xmlCall={xmlCall} />);
-    }
-
-    lastIndex = xmlCall.offsetInText + xmlCall.rawXml.length;
+  // Add text content if present
+  if (content.trim()) {
+    parts.push(<MarkdownContent key="text-content" content={content} />);
   }
 
-  // 渲染最后一段文本（仅对已完成的 XML 有效）
-  if (!parsingXmlCall && lastIndex < content.length) {
-    let remainingText = content.substring(lastIndex);
-    // 移除开头的 ``` 标记
-    remainingText = remainingText.replace(/^\s*```\s*/g, '');
-    if (remainingText.trim()) {
+  // Render Native Tool Calls
+  for (const toolCall of streamingToolCalls) {
+    const toolKey = `native-tool-${toolCall.id}`;
+    const normalizedName = normalizeToolName(toolCall.function?.name);
+    const toolResult = streamingToolResults.get(toolCall.id);
+    const isToolStreaming = !toolResult;
+
+    // Client tools render inline
+    if (normalizedName === 'task-clarify') {
       parts.push(
-        <MarkdownContent key={`md-${lastIndex}`} content={remainingText} />
+        <NativeTaskClarifyCard
+          key={toolKey}
+          toolCall={toolCall}
+          toolResult={toolResult}
+          streaming={isToolStreaming}
+          onSubmit={onSubmitTaskClarify}
+        />
+      );
+    } else if (normalizedName === 'complete') {
+      parts.push(
+        <NativeCompleteCard
+          key={toolKey}
+          toolCall={toolCall}
+          toolResult={toolResult}
+          streaming={isToolStreaming}
+        />
+      );
+    } else if (normalizedName === 'ask') {
+      parts.push(
+        <NativeAskCard
+          key={toolKey}
+          toolCall={toolCall}
+          toolResult={toolResult}
+          streaming={isToolStreaming}
+        />
+      );
+    } else {
+      // Other tools render as buttons
+      parts.push(
+        <NativeToolCallCard
+          key={toolKey}
+          toolCall={toolCall}
+          toolResult={toolResult}
+          streaming={isToolStreaming}
+        />
       );
     }
   }
@@ -114,25 +128,102 @@ function RenderedStreamingContent({ content }: { content: string }) {
 }
 
 /** Raw/Table/Content 模式：简单显示原始内容 */
-function RawStreamingContent({ content, viewMode }: { content: string; viewMode: ViewMode }) {
+function RawStreamingContent({ content, viewMode, streamingToolCalls, streamingToolResults }: { content: string; viewMode: ViewMode; streamingToolCalls: NativeToolCall[]; streamingToolResults: Map<string, ToolResultData> }) {
   return (
-    <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono overflow-auto max-h-96">
-      {content}
-    </pre>
+    <div className="space-y-3">
+      {/* Text content section */}
+      {content && (
+        <div>
+          <div className="text-apple-xs text-apple-gray-500 font-semibold mb-1">Text Content:</div>
+          <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 whitespace-pre-wrap break-words font-mono overflow-auto max-h-96 bg-apple-gray-100 dark:bg-[#1C1C1E] p-2 rounded-apple">
+            {content}
+          </pre>
+        </div>
+      )}
+
+      {/* Native Tool Calls - render as buttons, click to view in right panel */}
+      {streamingToolCalls.length > 0 && (
+        <div>
+          <div className="text-apple-xs text-apple-gray-500 font-semibold mb-2">
+            Native Tool Calls ({streamingToolCalls.length}):
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {streamingToolCalls.map((tc, index) => (
+              <RawToolCallButton key={tc.id || `tc-${index}`} toolCall={tc} streaming={true} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Show empty state if no content */}
+      {!content && streamingToolCalls.length === 0 && (
+        <div className="text-apple-xs text-apple-gray-400 italic">
+          Waiting for content...
+        </div>
+      )}
+    </div>
   );
 }
 
-/** Markdown 内容渲染组件 */
+/** Raw mode tool call button - click to view details in right panel */
+function RawToolCallButton({ toolCall, streaming }: { toolCall: NativeToolCall; streaming: boolean }) {
+  const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
+  const setSidePanelTab = useSetAtom(sidePanelTabAtom);
+
+  // Parse arguments
+  const args = (() => {
+    const rawArgs = toolCall.function?.arguments;
+    if (!rawArgs) return {};
+    if (typeof rawArgs === 'string') {
+      try {
+        return JSON.parse(rawArgs);
+      } catch {
+        return { _raw: rawArgs };
+      }
+    }
+    return rawArgs;
+  })();
+
+  const handleClick = () => {
+    const selected: SelectedToolCall = {
+      type: 'native',
+      toolName: toolCall.function?.name || 'unknown',
+      toolCallId: toolCall.id,
+      arguments: args,
+      streaming,
+    };
+    setSelectedToolCall(selected);
+    setSidePanelTab('tool');
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`group flex items-center gap-2 px-3 py-1.5 rounded-apple-sm border text-apple-xs font-medium transition-all
+        bg-white dark:bg-[#2C2C2E] border-apple-gray-300 dark:border-[#48484A]
+        text-apple-gray-700 dark:text-apple-gray-300 hover:bg-apple-gray-100 dark:hover:bg-[#3A3A3C]
+        ${streaming ? 'animate-pulse' : ''}`}
+    >
+      <span>{toolCall.function?.name || 'unknown'}</span>
+      {streaming && (
+        <Loader2 className="w-3 h-3 animate-spin text-apple-gray-500" />
+      )}
+      <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity flex-shrink-0" />
+    </button>
+  );
+}
+
+/** Markdown 内容渲染组件 - Apple typography */
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none
-      prose-headings:font-semibold prose-headings:text-gray-800 dark:prose-headings:text-gray-200
-      prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed
-      prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-a:no-underline hover:prose-a:underline
-      prose-code:text-pink-600 dark:prose-code:text-pink-400 prose-code:bg-gray-200 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
-      prose-pre:bg-gray-900 dark:prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:rounded-lg prose-pre:overflow-x-auto
+      prose-headings:font-semibold prose-headings:text-apple-gray-900 dark:prose-headings:text-apple-gray-100
+      prose-p:text-apple-gray-800 dark:prose-p:text-apple-gray-200 prose-p:leading-relaxed
+      prose-a:text-apple-blue prose-a:no-underline hover:prose-a:underline
+      prose-code:text-apple-purple prose-code:bg-apple-gray-200 dark:prose-code:bg-[#38383A] prose-code:px-1 prose-code:py-0.5 prose-code:rounded-apple-sm prose-code:text-apple-xs prose-code:before:content-none prose-code:after:content-none
+      prose-pre:bg-[#1C1C1E] prose-pre:text-apple-gray-100 prose-pre:rounded-apple prose-pre:overflow-x-auto
       prose-ul:list-disc prose-ol:list-decimal
-      prose-li:text-gray-700 dark:prose-li:text-gray-300
+      prose-li:text-apple-gray-800 dark:prose-li:text-apple-gray-200
     ">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -143,7 +234,7 @@ function MarkdownContent({ content }: { content: string }) {
 
             if (isInline) {
               return (
-                <code className="text-pink-600 dark:text-pink-400 bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-xs" {...props}>
+                <code className="text-apple-purple bg-apple-gray-200 dark:bg-[#38383A] px-1 py-0.5 rounded-apple-sm text-apple-xs" {...props}>
                   {children}
                 </code>
               );

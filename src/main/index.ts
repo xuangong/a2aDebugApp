@@ -6,6 +6,16 @@ import { app, BrowserWindow, Menu, shell } from 'electron';
 import { join } from 'path';
 import { registerIpcHandlers } from './ipc';
 
+// Handle EPIPE errors gracefully (occurs when parent process closes stdout)
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') return;
+  throw err;
+});
+process.stderr.on('error', (err) => {
+  if (err.code === 'EPIPE') return;
+  throw err;
+});
+
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 

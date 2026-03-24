@@ -9,6 +9,8 @@ export interface UserMessage {
   id: string;
   role: 'user';
   content: string;
+  /** Raw A2A request sent to server (for tool results, etc.) */
+  rawRequest?: A2ARequest | Record<string, unknown>;
   createdAt: number;
 }
 
@@ -20,6 +22,8 @@ export interface AssistantMessage {
   rawResponse: A2AResponse | A2AResult[];
   /** Native tool calls accumulated during streaming */
   nativeToolCalls?: NativeToolCall[];
+  /** File artifacts from backend (complete tool attachments) */
+  fileArtifacts?: FileArtifact[];
   createdAt: number;
   streaming?: boolean;
 }
@@ -73,8 +77,26 @@ export interface A2AFilePart {
   file: {
     name: string;
     mimeType: string;
-    bytes: string;
+    bytes?: string;
+    /** URI for file download (A2A FilePart with FileWithUri) */
+    uri?: string;
   };
+}
+
+/** File Artifact - structured artifact info returned by backend
+ * Sent via:
+ * 1. TaskArtifactUpdateEvent with FilePart (streaming)
+ * 2. Final status-update with DataPart containing file_artifacts array
+ */
+export interface FileArtifact {
+  id: string;
+  file_path: string;
+  file_name: string;
+  mime_type: string;
+  download_url: string;
+  /** Artifact type derived from mime_type or file extension */
+  type: 'pptx' | 'xlsx' | 'docx' | 'pdf' | 'image' | 'html' | 'csv' | 'md' | 'other';
+  createdAt: number;
 }
 
 /** Data Part - for structured data (e.g., tool results) */
@@ -533,6 +555,23 @@ export function collectToolResults(results: A2AResult[]): Map<string, ToolResult
   return toolResultsMap;
 }
 
+/** Helper: Get file artifact type from mime type or file name */
+export function getFileArtifactType(mimeType: string, fileName: string): FileArtifact['type'] {
+  const lower = (mimeType + fileName).toLowerCase();
+
+  // Check by mime type first
+  if (mimeType.includes('presentation') || lower.includes('.pptx') || lower.includes('.ppt')) return 'pptx';
+  if (mimeType.includes('spreadsheet') || lower.includes('.xlsx') || lower.includes('.xls')) return 'xlsx';
+  if (mimeType.includes('wordprocessingml') || lower.includes('.docx') || lower.includes('.doc')) return 'docx';
+  if (mimeType.includes('pdf') || lower.includes('.pdf')) return 'pdf';
+  if (mimeType.includes('html') || lower.includes('.html') || lower.includes('.htm')) return 'html';
+  if (mimeType.includes('csv') || lower.includes('.csv')) return 'csv';
+  if (mimeType.includes('markdown') || lower.includes('.md')) return 'md';
+  if (mimeType.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/.test(lower)) return 'image';
+
+  return 'other';
+}
+
 /** A2A Error */
 export interface A2AError {
   code: number;
@@ -559,12 +598,12 @@ export interface A2ASession {
 
 /** Conversation Metadata */
 export interface Conversation {
+  /** Context ID - unique identifier, same as A2A contextId and backend thread_id */
   id: string;
   title: string;
   createdAt: number;
   updatedAt: number;
   endpoint: string;
-  contextId?: string;
   /** Current taskId for input-required state continuation */
   currentTaskId?: string;
   /** Import source directory (if imported) */
@@ -587,6 +626,13 @@ export interface JsonRpcLogEntry {
     method: string;
     endpoint: string;
     body: A2ARequest;
+    /** Debug info about context/task IDs */
+    _contextIdInfo?: {
+      usingContextId: string | null;
+      usingTaskId?: string | null;
+      conversationId: string;
+      note: string;
+    };
   };
   /** Response related */
   response?: {

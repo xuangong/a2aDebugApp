@@ -30,20 +30,20 @@ function getA2AClient(endpoint: string, auth?: AuthConfig): A2AClient {
 function getSession(conversationId: string): A2ASession {
   let session = sessions.get(conversationId);
   if (!session) {
-    // Try to load contextId and currentTaskId from persisted conversation data
+    // conversationId IS the contextId (they are the same)
+    // Only need to load taskId for input-required state continuation
     const conversations = conversationManager.listConversations();
     const conversation = conversations.find(c => c.id === conversationId);
-    const persistedContextId = conversation?.contextId || null;
     const persistedTaskId = conversation?.currentTaskId;
 
     console.log('[getSession] Creating new session:', {
       conversationId,
-      persistedContextId,
+      contextId: conversationId, // same as conversationId
       persistedTaskId,
     });
 
     session = {
-      contextId: persistedContextId,
+      contextId: conversationId, // contextId = conversationId
       conversationId,
       taskId: persistedTaskId,
     };
@@ -117,12 +117,13 @@ export function registerIpcHandlers(): void {
     const session = getSession(conversationId);
     const response = await client.send(message, session);
 
-    // 更新 contextId
-    if (response.result?.contextId && !session.contextId) {
-      session.contextId = response.result.contextId;
-      // 同步到对话记录
-      await conversationManager.updateConversation(conversationId, {
-        contextId: session.contextId,
+    // contextId = conversationId (they are now the same)
+    // Backend should return the same value, just log if there's a mismatch
+    if (response.result?.contextId && response.result.contextId !== session.contextId) {
+      console.warn('[IPC A2A_SEND] contextId mismatch (unexpected):', {
+        conversationId,
+        expectedContextId: session.contextId,
+        receivedContextId: response.result.contextId,
       });
     }
 
@@ -151,17 +152,13 @@ export function registerIpcHandlers(): void {
             data: streamEvent.data,
           });
 
-          // contextId 现在由调用方预生成，后端会用它作为 thread_id
-          // 这里只需要验证后端返回的 contextId 与我们发送的一致
+          // contextId = conversationId, backend should return the same value
+          // Just log a warning if there's a mismatch (shouldn't happen)
           if (streamEvent.data.contextId && streamEvent.data.contextId !== session.contextId) {
-            console.log('[IPC A2A_STREAM] contextId mismatch - updating to backend value:', {
+            console.warn('[IPC A2A_STREAM] contextId mismatch (unexpected):', {
               conversationId,
               expectedContextId: session.contextId,
               receivedContextId: streamEvent.data.contextId,
-            });
-            session.contextId = streamEvent.data.contextId;
-            await conversationManager.updateConversation(conversationId, {
-              contextId: session.contextId,
             });
           }
 

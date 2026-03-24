@@ -94,7 +94,11 @@ export function parseXmlCalls(text: string): { cleanText: string; xmlCalls: XmlC
 /**
  * 获取工具的人类可读名称
  */
-export function getHumanReadableToolName(tagName: string): string {
+export function getHumanReadableToolName(tagName: string | null | undefined): string {
+  if (!tagName) {
+    return 'Unknown Tool';
+  }
+
   const nameMap: Record<string, string> = {
     'ask': 'Ask User',
     'complete': 'Complete',

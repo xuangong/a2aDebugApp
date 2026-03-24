@@ -18,6 +18,19 @@ interface ConversationsIndex {
   conversations: Conversation[];
 }
 
+/** Backend recorded conversations index (may have contextId field from old format) */
+interface BackendConversationsIndex {
+  version: number;
+  conversations: Array<{
+    id: string;
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    endpoint: string;
+    contextId?: string;
+  }>;
+}
+
 export class ConversationManager {
   constructor() {
     this.ensureDirectories();
@@ -66,13 +79,17 @@ export class ConversationManager {
 
   /**
    * 创建新对话
+   * id 就是 contextId，后端会用它作为 thread_id
    */
   createConversation(title: string, endpoint: string): Conversation {
     const index = this.loadIndex();
     const now = Date.now();
 
+    // id = contextId = thread_id (all the same)
+    const id = crypto.randomUUID();
+
     const conversation: Conversation = {
-      id: crypto.randomUUID(),
+      id,
       title: title || 'New Conversation',
       createdAt: now,
       updatedAt: now,
@@ -260,7 +277,7 @@ export class ConversationManager {
 
     try {
       const backendContent = readFileSync(backendIndexPath, 'utf-8');
-      const backendIndex = JSON.parse(backendContent) as ConversationsIndex;
+      const backendIndex = JSON.parse(backendContent) as BackendConversationsIndex;
       const localIndex = this.loadIndex();
       const localIds = new Set(localIndex.conversations.map((c) => c.id));
 
@@ -295,13 +312,14 @@ export class ConversationManager {
           }
 
           // 添加到本地索引，记录导入来源
+          // Note: imported conversations may have contextId from old format
+          // Use contextId if available for backward compatibility, otherwise use id
           const importedConv: Conversation = {
-            id: backendConv.id,
+            id: backendConv.contextId ?? backendConv.id,
             title: backendConv.title,
             createdAt: backendConv.createdAt,
             updatedAt: backendConv.updatedAt,
             endpoint: backendConv.endpoint,
-            contextId: backendConv.contextId,
             importSource: sourceDir,
           };
 

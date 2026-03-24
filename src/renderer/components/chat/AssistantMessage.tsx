@@ -1,27 +1,26 @@
 /**
  * Assistant Message Component
+ * Apple Design System - Native tool calls only (XML tool calls deprecated)
  */
 
 import { useState, useCallback, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, ChevronRight, ChevronDown, Maximize2, Minimize2, Eye, Code, FileText } from 'lucide-react';
+import { Copy, Check, Maximize2, Minimize2, Eye, Code, FileText } from 'lucide-react';
 import type { AssistantMessage as AssistantMessageType, A2AResult, ToolResultData, NativeToolCall } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
-import { parseXmlContent, type XmlCall } from '../../lib/xml-streaming-parser';
 import {
-  ToolCallCard,
-  CompleteCard,
-  AskCard,
-  TaskClarifyCard,
-  PresentationPlannerCard,
-  DateTimeCard,
   NativeToolCallCard,
   NativeCompleteCard,
   NativeAskCard,
   NativeTaskClarifyCard,
 } from '../ToolCallCard';
 import { extractPartsFromResult, collectToolResults, collectNativeToolCalls } from '../../../shared/types';
+import { JsonView, darkStyles, defaultStyles } from 'react-json-view-lite';
+import 'react-json-view-lite/dist/index.css';
+
+// Custom expand function: expand all nodes by default
+const expandAllNodes = () => true;
 
 // Normalize tool name to match against known client tools
 // Handles: task_clarify, task-clarify, Task_clarify, etc.
@@ -57,51 +56,39 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
   }, [onClick]);
 
   return (
-    <div className="flex justify-start w-full">
+    <div className="flex justify-start w-full animate-fade-in">
       <div
         ref={containerRef}
-        className={`w-full bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3 transition-all select-text ${
+        className={`w-full apple-message-assistant transition-all select-text ${
           isSearchMatch
-            ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 bg-yellow-50 dark:bg-yellow-900/20'
+            ? 'ring-2 ring-apple-orange ring-offset-2 ring-offset-apple-gray-100 dark:ring-offset-black bg-apple-orange/5'
             : isSelected
-              ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-900'
-              : 'hover:bg-gray-200/50 dark:hover:bg-gray-700/50'
+              ? 'ring-2 ring-apple-blue ring-offset-2 ring-offset-apple-gray-100 dark:ring-offset-black'
+              : 'hover:bg-apple-gray-300/50 dark:hover:bg-[#3A3A3C]'
         }`}
         onClick={handleClick}
         title="Click to highlight related logs"
       >
-        {/* View mode toggle */}
+        {/* View mode toggle - Apple segmented control style */}
         <div className="flex items-center justify-end mb-2 -mt-1" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center bg-gray-200 dark:bg-gray-700 rounded-md p-0.5">
+          <div className="apple-segmented">
             <button
               onClick={() => setLocalViewMode('rendered')}
-              className={`p-1 rounded transition-colors ${
-                viewMode === 'rendered'
-                  ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-200 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className={`apple-segment ${viewMode === 'rendered' ? 'active' : ''}`}
               title="Rendered view"
             >
               <Eye className="w-3 h-3" />
             </button>
             <button
               onClick={() => setLocalViewMode('raw')}
-              className={`p-1 rounded transition-colors ${
-                viewMode === 'raw'
-                  ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-200 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className={`apple-segment ${viewMode === 'raw' ? 'active' : ''}`}
               title="Raw JSON view"
             >
               <Code className="w-3 h-3" />
             </button>
             <button
               onClick={() => setLocalViewMode('content')}
-              className={`p-1 rounded transition-colors ${
-                viewMode === 'content'
-                  ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-gray-200 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className={`apple-segment ${viewMode === 'content' ? 'active' : ''}`}
               title="Raw content view"
             >
               <FileText className="w-3 h-3" />
@@ -116,7 +103,7 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
         ) : (
           <RawView message={message} searchQuery={searchQuery} />
         )}
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+        <div className="text-apple-xs text-apple-gray-500 mt-2">
           {new Date(message.createdAt).toLocaleTimeString()}
         </div>
       </div>
@@ -125,12 +112,6 @@ export function AssistantMessage({ message, viewMode: globalViewMode, isSelected
 }
 
 function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: AssistantMessageType; searchQuery?: string; onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void> }) {
-  // Parse XML tool calls from text content (legacy support)
-  const { plainText, xmlCalls, parsingXmlCall } = useMemo(
-    () => parseXmlContent(message.content),
-    [message.content]
-  );
-
   // Normalize rawResponse to A2AResult array
   const results: A2AResult[] = useMemo(() => {
     const rawResponse = message.rawResponse;
@@ -153,6 +134,12 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     const fromResults = collectNativeToolCalls(results);
     const fromMessage = message.nativeToolCalls || [];
 
+    console.log('[AssistantMessage] nativeToolCalls:', {
+      fromResultsLength: fromResults.length,
+      fromMessageLength: fromMessage.length,
+      messageHasNativeToolCalls: !!message.nativeToolCalls,
+    });
+
     // If we have tool calls from results, prefer those (more complete data)
     // Otherwise use the ones saved in the message (finalized from streaming)
     if (fromResults.length > 0) {
@@ -161,7 +148,7 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     return fromMessage;
   }, [results, message.nativeToolCalls]);
 
-  // Extract text content from TextParts (for native tool mode)
+  // Extract text content from TextParts
   const textFromParts = useMemo(() => {
     const texts: string[] = [];
     for (const result of results) {
@@ -174,24 +161,6 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     }
     return texts.join('');
   }, [results]);
-
-  // Merge completed and in-progress XML calls
-  const allXmlCalls: XmlCall[] = useMemo(() => {
-    const calls = [...xmlCalls];
-    if (parsingXmlCall) {
-      calls.push(parsingXmlCall);
-    }
-    return calls;
-  }, [xmlCalls, parsingXmlCall]);
-
-  // Get tool result by tool_call_id
-  const getToolResult = (xmlCall: XmlCall): ToolResultData | undefined => {
-    const toolCallId = xmlCall.toolCallId || xmlCall.attributes['_tool_call_id'];
-    if (toolCallId) {
-      return toolResultsMap.get(toolCallId);
-    }
-    return undefined;
-  };
 
   // Get tool result for native tool call
   const getNativeToolResult = (tc: NativeToolCall): ToolResultData | undefined => {
@@ -215,67 +184,23 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     }
   };
 
-  // Render content mixing text and tool calls
+  // Render content with native tool calls only
   const renderContent = () => {
-    // Check if we have native tool calls (new mode)
-    if (nativeToolCalls.length > 0) {
-      return (
-        <>
-          {textFromParts && <MarkdownContent content={textFromParts} />}
-          {nativeToolCalls.map((tc, i) => renderNativeToolCard(tc, i))}
-        </>
-      );
+    // Use text from parts if available, otherwise fall back to message.content
+    const textContent = textFromParts || message.content;
+
+    if (nativeToolCalls.length === 0) {
+      // No tool calls, just render text
+      return <MarkdownContent content={textContent} />;
     }
 
-    // Fall back to XML parsing (legacy mode)
-    if (allXmlCalls.length === 0) {
-      return <MarkdownContent content={message.content} />;
-    }
-
-    // Mix text and XML tool calls
-    const originalText = message.content;
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    for (const xmlCall of allXmlCalls) {
-      if (xmlCall.offsetInText > lastIndex) {
-        let textBefore = originalText.substring(lastIndex, xmlCall.offsetInText);
-        textBefore = textBefore.replace(/```xml?\s*$/g, '').replace(/^\s*```\s*/g, '');
-        if (textBefore.trim()) {
-          parts.push(<MarkdownContent key={`md-${lastIndex}`} content={textBefore} />);
-        }
-      }
-
-      const toolResult = getToolResult(xmlCall);
-      const toolKey = `tool-${xmlCall.toolCallId || xmlCall.name}-${xmlCall.offsetInText}`;
-      const normalizedName = normalizeToolName(xmlCall.name);
-
-      if (normalizedName === 'complete') {
-        parts.push(<CompleteCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (normalizedName === 'ask') {
-        parts.push(<AskCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (normalizedName === 'task-clarify') {
-        parts.push(<TaskClarifyCard key={toolKey} xmlCall={xmlCall} onSubmit={onSubmitTaskClarify} toolResult={toolResult} />);
-      } else if (normalizedName === 'presentation-planner') {
-        parts.push(<PresentationPlannerCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      } else if (normalizedName === 'get-current-datetime') {
-        parts.push(<DateTimeCard key={toolKey} xmlCall={xmlCall} forceCompleted toolResult={toolResult} />);
-      } else {
-        parts.push(<ToolCallCard key={toolKey} xmlCall={xmlCall} toolResult={toolResult} />);
-      }
-
-      lastIndex = xmlCall.offsetInText + xmlCall.rawXml.length;
-    }
-
-    if (!parsingXmlCall && lastIndex < originalText.length) {
-      let remainingText = originalText.substring(lastIndex);
-      remainingText = remainingText.replace(/^\s*```\s*/g, '');
-      if (remainingText.trim()) {
-        parts.push(<MarkdownContent key={`md-${lastIndex}`} content={remainingText} />);
-      }
-    }
-
-    return <>{parts}</>;
+    // Render text + native tool cards
+    return (
+      <>
+        {textContent && <MarkdownContent content={textContent} />}
+        {nativeToolCalls.map((tc, i) => renderNativeToolCard(tc, i))}
+      </>
+    );
   };
 
   return (
@@ -285,19 +210,19 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
   );
 }
 
-/** Markdown Content Renderer */
+/** Markdown Content Renderer - Apple typography */
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none
-      prose-headings:font-semibold prose-headings:text-gray-800 dark:prose-headings:text-gray-200
-      prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed
-      prose-a:text-primary-600 dark:prose-a:text-primary-400 prose-a:no-underline hover:prose-a:underline
-      prose-code:text-pink-600 dark:prose-code:text-pink-400 prose-code:bg-gray-200 dark:prose-code:bg-gray-700 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
-      prose-pre:bg-gray-900 dark:prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-pre:rounded-lg prose-pre:overflow-x-auto
+      prose-headings:font-semibold prose-headings:text-apple-gray-900 dark:prose-headings:text-apple-gray-100
+      prose-p:text-apple-gray-800 dark:prose-p:text-apple-gray-200 prose-p:leading-relaxed
+      prose-a:text-apple-blue prose-a:no-underline hover:prose-a:underline
+      prose-code:text-apple-purple dark:prose-code:text-apple-purple prose-code:bg-apple-gray-200 dark:prose-code:bg-[#38383A] prose-code:px-1 prose-code:py-0.5 prose-code:rounded-apple-sm prose-code:text-apple-xs prose-code:before:content-none prose-code:after:content-none
+      prose-pre:bg-[#1C1C1E] prose-pre:text-apple-gray-100 prose-pre:rounded-apple prose-pre:overflow-x-auto
       prose-ul:list-disc prose-ol:list-decimal
-      prose-li:text-gray-700 dark:prose-li:text-gray-300
-      prose-blockquote:border-l-4 prose-blockquote:border-primary-500 prose-blockquote:italic prose-blockquote:text-gray-600 dark:prose-blockquote:text-gray-400
-      prose-table:text-sm prose-th:bg-gray-100 dark:prose-th:bg-gray-800 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-gray-200 dark:prose-td:border-gray-700
+      prose-li:text-apple-gray-800 dark:prose-li:text-apple-gray-200
+      prose-blockquote:border-l-4 prose-blockquote:border-apple-blue prose-blockquote:italic prose-blockquote:text-apple-gray-600 dark:prose-blockquote:text-apple-gray-400
+      prose-table:text-apple-sm prose-th:bg-apple-gray-100 dark:prose-th:bg-[#2C2C2E] prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2 prose-td:border prose-td:border-apple-gray-200 dark:prose-td:border-[#38383A]
     ">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -309,7 +234,7 @@ function MarkdownContent({ content }: { content: string }) {
 
             if (isInline) {
               return (
-                <code className="text-pink-600 dark:text-pink-400 bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-xs" {...props}>
+                <code className="text-apple-purple bg-apple-gray-200 dark:bg-[#38383A] px-1 py-0.5 rounded-apple-sm text-apple-xs" {...props}>
                   {children}
                 </code>
               );
@@ -349,6 +274,9 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Detect dark mode
+  const isDark = document.documentElement.classList.contains('dark');
+
   const jsonString = useMemo(
     () => JSON.stringify(message.rawResponse, null, 2),
     [message.rawResponse]
@@ -364,152 +292,44 @@ function RawView({ message, searchQuery }: { message: AssistantMessageType; sear
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
       {/* Header toolbar */}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+        <div className="text-apple-xs font-medium text-apple-gray-500 uppercase tracking-wide">
           Raw Response
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
-            className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
+            className="btn-apple-icon w-6 h-6"
             title="Copy to clipboard"
           >
             {copied ? (
-              <Check className="w-3.5 h-3.5 text-green-500" />
+              <Check className="w-3.5 h-3.5 text-apple-green" />
             ) : (
-              <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Copy className="w-3.5 h-3.5" />
             )}
           </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
+            className="btn-apple-icon w-6 h-6"
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
             {isExpanded ? (
-              <Minimize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Minimize2 className="w-3.5 h-3.5" />
             ) : (
-              <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Maximize2 className="w-3.5 h-3.5" />
             )}
           </button>
         </div>
       </div>
-      {/* JSON content (collapsible) */}
-      <div className={`text-xs bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
-        <CollapsibleJson data={message.rawResponse} />
+      {/* JSON content */}
+      <div className={`text-[11px] bg-apple-gray-100 dark:bg-[#1C1C1E] p-3 rounded-apple overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
+        <JsonView
+          data={message.rawResponse}
+          shouldExpandNode={expandAllNodes}
+          style={isDark ? darkStyles : defaultStyles}
+        />
       </div>
     </div>
   );
-}
-
-/** Collapsible JSON Viewer */
-interface CollapsibleJsonProps {
-  data: unknown;
-  depth?: number;
-  initialExpanded?: boolean;
-}
-
-function CollapsibleJson({ data, depth = 0, initialExpanded = true }: CollapsibleJsonProps) {
-  // Expand all by default
-  const [isExpanded, setIsExpanded] = useState(initialExpanded);
-
-  const indent = depth * 16;
-
-  if (data === null) {
-    return <span className="text-orange-500">null</span>;
-  }
-
-  if (typeof data === 'boolean') {
-    return <span className="text-purple-500">{data.toString()}</span>;
-  }
-
-  if (typeof data === 'number') {
-    return <span className="text-blue-500">{data}</span>;
-  }
-
-  if (typeof data === 'string') {
-    // Truncate long strings for display
-    const displayValue = data.length > 100 ? `${data.slice(0, 100)}...` : data;
-    return (
-      <span className="text-green-600 dark:text-green-400" title={data}>
-        "{displayValue}"
-      </span>
-    );
-  }
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) {
-      return <span className="text-gray-600 dark:text-gray-400">[]</span>;
-    }
-
-    return (
-      <span>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="inline-flex items-center hover:bg-gray-300 dark:hover:bg-gray-700 rounded px-0.5"
-        >
-          {isExpanded ? (
-            <ChevronDown className="w-3 h-3 text-gray-500" />
-          ) : (
-            <ChevronRight className="w-3 h-3 text-gray-500" />
-          )}
-        </button>
-        <span className="text-gray-600 dark:text-gray-400">
-          [{!isExpanded && <span className="text-gray-400 mx-1">{data.length} items</span>}
-        </span>
-        {isExpanded && (
-          <div style={{ marginLeft: indent + 16 }}>
-            {data.map((item, index) => (
-              <div key={index} className="leading-relaxed">
-                <span className="text-gray-500">{index}: </span>
-                <CollapsibleJson data={item} depth={depth + 1} />
-                {index < data.length - 1 && <span className="text-gray-400">,</span>}
-              </div>
-            ))}
-          </div>
-        )}
-        <span className="text-gray-600 dark:text-gray-400">]</span>
-      </span>
-    );
-  }
-
-  if (typeof data === 'object') {
-    const entries = Object.entries(data);
-    if (entries.length === 0) {
-      return <span className="text-gray-600 dark:text-gray-400">{'{}'}</span>;
-    }
-
-    return (
-      <span>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="inline-flex items-center hover:bg-gray-300 dark:hover:bg-gray-700 rounded px-0.5"
-        >
-          {isExpanded ? (
-            <ChevronDown className="w-3 h-3 text-gray-500" />
-          ) : (
-            <ChevronRight className="w-3 h-3 text-gray-500" />
-          )}
-        </button>
-        <span className="text-gray-600 dark:text-gray-400">
-          {'{'}{!isExpanded && <span className="text-gray-400 mx-1">{entries.length} keys</span>}
-        </span>
-        {isExpanded && (
-          <div style={{ marginLeft: indent + 16 }}>
-            {entries.map(([key, value], index) => (
-              <div key={key} className="leading-relaxed">
-                <span className="text-red-600 dark:text-red-400">"{key}"</span>
-                <span className="text-gray-600 dark:text-gray-400">: </span>
-                <CollapsibleJson data={value} depth={depth + 1} />
-                {index < entries.length - 1 && <span className="text-gray-400">,</span>}
-              </div>
-            ))}
-          </div>
-        )}
-        <span className="text-gray-600 dark:text-gray-400">{'}'}</span>
-      </span>
-    );
-  }
-
-  return <span className="text-gray-500">{String(data)}</span>;
 }
 
 /** Content View - concatenate all text content */
@@ -570,7 +390,7 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     const parts = allContent.split(regex);
     return parts.map((part, i) =>
       regex.test(part) ? (
-        <mark key={i} className="bg-yellow-300 dark:bg-yellow-600 text-gray-900 dark:text-gray-100 rounded px-0.5">
+        <mark key={i} className="bg-apple-orange/30 text-apple-gray-900 dark:text-apple-gray-100 rounded px-0.5">
           {part}
         </mark>
       ) : (
@@ -589,42 +409,40 @@ function ContentView({ message, searchQuery }: { message: AssistantMessageType; 
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
       {/* Header toolbar */}
       <div className="flex items-center justify-between">
-        <div className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+        <div className="text-apple-xs font-medium text-apple-gray-500 uppercase tracking-wide">
           Raw Content ({allContent.length} chars)
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={handleCopy}
-            className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
+            className="btn-apple-icon w-6 h-6"
             title="Copy to clipboard"
           >
             {copied ? (
-              <Check className="w-3.5 h-3.5 text-green-500" />
+              <Check className="w-3.5 h-3.5 text-apple-green" />
             ) : (
-              <Copy className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Copy className="w-3.5 h-3.5" />
             )}
           </button>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1 hover:bg-gray-300 dark:hover:bg-gray-700 rounded transition-colors"
+            className="btn-apple-icon w-6 h-6"
             title={isExpanded ? 'Collapse' : 'Expand'}
           >
             {isExpanded ? (
-              <Minimize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Minimize2 className="w-3.5 h-3.5" />
             ) : (
-              <Maximize2 className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+              <Maximize2 className="w-3.5 h-3.5" />
             )}
           </button>
         </div>
       </div>
       {/* Content */}
-      <div className={`bg-gray-200 dark:bg-gray-900 p-3 rounded-lg overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
-        <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
+      <div className={`bg-apple-gray-100 dark:bg-[#1C1C1E] p-3 rounded-apple overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
+        <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 whitespace-pre-wrap break-words font-mono">
           {highlightedContent}
         </pre>
       </div>
     </div>
   );
 }
-
-

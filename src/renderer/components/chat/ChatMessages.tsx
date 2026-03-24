@@ -57,7 +57,11 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
 
   // 点击消息时设置选中状态（toggle）
   const handleMessageClick = (messageId: string) => {
-    setSelectedMessageId(prev => prev === messageId ? null : messageId);
+    if (selectedMessageId === messageId) {
+      setSelectedMessageId(null);
+    } else {
+      setSelectedMessageId(messageId);
+    }
   };
 
   // 点击空白处时取消选择
@@ -72,13 +76,14 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
   const hasStreamingContent = streaming && (streamingContent || streamingToolCalls.length > 0);
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4" onClick={handleContainerClick}>
-      <div className="w-full space-y-4" onClick={handleContainerClick}>
+    <div className="flex-1 overflow-y-auto px-6 py-6 bg-apple-gray-100 dark:bg-black" onClick={handleContainerClick}>
+      <div className="max-w-4xl mx-auto space-y-4" onClick={handleContainerClick}>
         {filteredMessages.map((message) => (
           message.role === 'user' ? (
             <UserMessage
               key={message.id}
               message={message}
+              viewMode={viewMode}
               isSelected={selectedMessageId === message.id}
               onClick={() => handleMessageClick(message.id)}
             />
@@ -103,17 +108,18 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
             viewMode={viewMode}
             streamingToolCalls={streamingToolCalls}
             streamingToolResults={streamingToolResults}
+            onSubmitTaskClarify={onSubmitTaskClarify}
           />
         )}
 
-        {/* 加载指示器 - 等待首个内容 */}
+        {/* 加载指示器 - Apple style */}
         {streaming && !hasStreamingContent && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-3">
-              <div className="flex items-center gap-1">
-                <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div className="flex justify-start animate-fade-in">
+            <div className="apple-message-assistant">
+              <div className="flex items-center gap-1.5">
+                <span className="apple-loading-dot" />
+                <span className="apple-loading-dot" />
+                <span className="apple-loading-dot" />
               </div>
             </div>
           </div>

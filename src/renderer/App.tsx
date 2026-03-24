@@ -1,16 +1,17 @@
 /**
  * 主应用组件
+ * Apple Design System
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAtom, useSetAtom, useAtomValue } from 'jotai';
 import {
   configAtom,
   conversationsAtom,
   currentConversationIdAtom,
-  messagesAtom,
+  messagesMapAtom,
   endpointAtom,
-  debugLogsAtom,
+  debugLogsMapAtom,
   appModeAtom,
   liveSelectedContextIdAtom,
 } from './atoms/chat-atoms';
@@ -24,34 +25,47 @@ export default function App() {
   const [config, setConfig] = useAtom(configAtom);
   const setConversations = useSetAtom(conversationsAtom);
   const [currentConversationId, setCurrentConversationId] = useAtom(currentConversationIdAtom);
-  const setMessages = useSetAtom(messagesAtom);
+  const setMessagesMap = useSetAtom(messagesMapAtom);
   const setEndpoint = useSetAtom(endpointAtom);
-  const setDebugLogs = useSetAtom(debugLogsAtom);
+  const setDebugLogsMap = useSetAtom(debugLogsMapAtom);
   const appMode = useAtomValue(appModeAtom);
   const liveSelectedContextId = useAtomValue(liveSelectedContextIdAtom);
 
-  // 平台检测
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
   const isMac = platform === 'darwin';
+  const [isDark, setIsDark] = useState(() => {
+    // 同步初始状态与 index.html 中的主题设置
+    return document.documentElement.classList.contains('dark');
+  });
 
-  // 初始化：加载配置、对话列表和平台信息
+  const toggleTheme = useCallback(() => {
+    const html = document.documentElement;
+    html.classList.add('transitioning');
+    const newIsDark = !isDark;
+    if (newIsDark) {
+      html.classList.add('dark');
+      localStorage.setItem('a2a-theme-mode', 'dark');
+    } else {
+      html.classList.remove('dark');
+      localStorage.setItem('a2a-theme-mode', 'light');
+    }
+    setIsDark(newIsDark);
+    setTimeout(() => html.classList.remove('transitioning'), 250);
+  }, [isDark]);
+
   useEffect(() => {
     const init = async () => {
       try {
-        // 获取平台信息
         const currentPlatform = await window.electronAPI.getPlatform();
         setPlatform(currentPlatform);
 
-        // 加载配置
         const loadedConfig = await window.electronAPI.getConfig();
         setConfig(loadedConfig);
         setEndpoint(loadedConfig.defaultEndpoint);
 
-        // 加载对话列表
         const conversations = await window.electronAPI.listConversations();
         setConversations(conversations);
 
-        // 如果有对话，选中第一个
         if (conversations.length > 0 && !currentConversationId) {
           setCurrentConversationId(conversations[0].id);
         }
@@ -59,57 +73,66 @@ export default function App() {
         console.error('Failed to initialize:', error);
       }
     };
-
     init();
   }, []);
 
-  // 当对话切换时，加载消息和 debug logs
   useEffect(() => {
     const loadData = async () => {
       if (!currentConversationId) {
-        setMessages([]);
-        setDebugLogs([]);
         return;
       }
-
       try {
-        // 并行加载消息和 debug logs
         const [messages, debugLogs] = await Promise.all([
           window.electronAPI.getMessages(currentConversationId),
           window.electronAPI.getDebugLogs(currentConversationId),
         ]);
-        setMessages(messages);
-        setDebugLogs(debugLogs);
+        // Load messages into the map for this conversation (only if not already loaded)
+        setMessagesMap((map) => {
+          // Don't overwrite if messages already exist (e.g., from streaming)
+          if (map.has(currentConversationId) && map.get(currentConversationId)!.length > 0) {
+            return map;
+          }
+          const newMap = new Map(map);
+          newMap.set(currentConversationId, messages);
+          return newMap;
+        });
+        // Load debug logs into the map (only if not already loaded)
+        setDebugLogsMap((map) => {
+          if (map.has(currentConversationId) && map.get(currentConversationId)!.length > 0) {
+            return map;
+          }
+          const newMap = new Map(map);
+          newMap.set(currentConversationId, debugLogs);
+          return newMap;
+        });
       } catch (error) {
         console.error('Failed to load data:', error);
-        setMessages([]);
-        setDebugLogs([]);
       }
     };
-
     loadData();
-  }, [currentConversationId, setMessages, setDebugLogs]);
+  }, [currentConversationId, setMessagesMap, setDebugLogsMap]);
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-
-      {/* Windows/Linux 自定义标题栏 */}
+    <div className="flex flex-col h-full bg-apple-gray-100 dark:bg-black overflow-hidden">
       {platform && !isMac && <WindowsTitleBar />}
 
       <div className="flex flex-1 min-h-0">
-        {/* 侧边栏 */}
-        <Sidebar />
+        <Sidebar isDark={isDark} onToggleTheme={toggleTheme} />
 
-        {/* 主内容区 */}
-        <main className="flex-1 flex flex-col min-w-0">
+        <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#1C1C1E]">
           {appMode === 'live' ? (
             liveSelectedContextId ? (
               <LiveSessionView contextId={liveSelectedContextId} />
             ) : (
               <div className="flex-1 flex items-center justify-center p-8">
-                <div className="text-center space-y-3">
-                  <Radio className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-center animate-fade-in">
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-apple-gray-200 dark:bg-[#38383A] flex items-center justify-center">
+                    <Radio className="w-6 h-6 text-apple-gray-500" />
+                  </div>
+                  <h3 className="text-apple-lg font-semibold text-apple-gray-900 dark:text-apple-gray-100 mb-1">
+                    Live Session Viewer
+                  </h3>
+                  <p className="text-apple-sm text-apple-gray-500 max-w-[280px]">
                     Select a live session from the sidebar to preview
                   </p>
                 </div>

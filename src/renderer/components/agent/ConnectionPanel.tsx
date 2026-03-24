@@ -1,5 +1,6 @@
 /**
  * 连接配置面板
+ * Apple Design System
  */
 
 import { useState } from 'react';
@@ -130,21 +131,18 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   };
 
   return (
-    <div className="w-96 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl overflow-hidden">
+    <div className="w-96 apple-card shadow-apple-xl max-h-[80vh] overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-apple-gray-300/60 dark:border-[#38383A] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Server className="w-5 h-5 text-primary-500" />
-          <h3 className="font-medium text-gray-800 dark:text-gray-200">
+          <Server className="w-5 h-5 text-apple-blue" />
+          <h3 className="text-apple-sm font-semibold text-apple-gray-900 dark:text-apple-gray-100">
             A2A Server Connection
           </h3>
         </div>
         {onClose && (
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
-          >
-            <X className="w-4 h-4 text-gray-500" />
+          <button onClick={onClose} className="btn-apple-icon w-7 h-7">
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
@@ -153,24 +151,24 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
       <div className="p-4 space-y-4">
         {/* Endpoint Input */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
             Server Endpoint
           </label>
           <div className="flex gap-2">
             <div className="flex-1 relative">
-              <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-gray-400" />
               <input
                 type="text"
                 value={tempEndpoint}
                 onChange={(e) => setTempEndpoint(e.target.value)}
                 placeholder="http://localhost:8000/a2a/"
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="apple-input pl-9"
               />
             </div>
             <button
               onClick={handleConnect}
               disabled={loading || !tempEndpoint.trim()}
-              className="px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              className="btn-apple flex items-center gap-2"
             >
               {loading ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -181,7 +179,7 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
             </button>
           </div>
           {connectionStatus === 'success' && (
-            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+            <p className="text-apple-xs text-apple-green flex items-center gap-1">
               <Check className="w-3 h-3" />
               Connected successfully
             </p>
@@ -192,27 +190,27 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
         <div className="space-y-2">
           <button
             onClick={() => setShowAuthFields(!showAuthFields)}
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-primary-500 transition-colors"
+            className="flex items-center gap-2 text-apple-sm font-medium text-apple-gray-700 dark:text-apple-gray-300 hover:text-apple-blue transition-colors"
           >
             <Key className="w-4 h-4" />
             Authentication Settings
-            <span className={`text-xs transition-transform ${showAuthFields ? 'rotate-180' : ''}`}>
+            <span className={`text-apple-xs transition-transform ${showAuthFields ? 'rotate-180' : ''}`}>
               ▼
             </span>
           </button>
 
           {showAuthFields && (
-            <div className="space-y-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+            <div className="space-y-3 p-3 bg-apple-gray-50 dark:bg-[#2C2C2E] rounded-apple">
               {/* Quick Paste JSON */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                  <label className="text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400 flex items-center gap-1">
                     <Clipboard className="w-3 h-3" />
                     Quick Import from Browser
                   </label>
                   <button
                     onClick={() => setShowHelp(!showHelp)}
-                    className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-600"
+                    className="flex items-center gap-1 text-apple-xs text-apple-blue hover:underline"
                   >
                     <HelpCircle className="w-3 h-3" />
                     Help
@@ -223,32 +221,32 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
                     placeholder='Paste the accesstoken JSON from browser LocalStorage here...'
-                    className="flex-1 px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                    className="apple-input text-apple-xs resize-none"
                     rows={2}
                   />
                   <button
                     onClick={handleParseJson}
                     disabled={!jsonInput.trim()}
-                    className="px-3 py-2 bg-primary-500 text-white text-xs font-medium rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="btn-apple text-apple-xs"
                   >
                     Extract
                   </button>
                 </div>
                 {parseError && (
-                  <p className="text-xs text-red-500">{parseError}</p>
+                  <p className="text-apple-xs text-apple-red">{parseError}</p>
                 )}
               </div>
 
               {/* Help Instructions */}
               {showHelp && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 text-xs space-y-2">
-                  <p className="font-medium text-blue-800 dark:text-blue-300">
+                <div className="p-3 bg-apple-blue/5 rounded-apple border border-apple-blue/20 text-apple-xs space-y-2">
+                  <p className="font-medium text-apple-blue">
                     How to get Token JSON from browser:
                   </p>
-                  <ol className="list-decimal list-inside space-y-1 text-blue-700 dark:text-blue-400">
-                    <li>Open <code className="px-1 bg-blue-100 dark:bg-blue-800 rounded">localhost:3000</code> and login</li>
+                  <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400">
+                    <li>Open <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">localhost:3000</code> and login</li>
                     <li>Open DevTools (F12) → Application → Local Storage</li>
-                    <li>Find key containing <code className="px-1 bg-blue-100 dark:bg-blue-800 rounded">accesstoken</code></li>
+                    <li>Find key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code></li>
                     <li>Copy the entire JSON value and paste above</li>
                   </ol>
                 </div>
@@ -256,36 +254,36 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
               {/* Token Expiry Status */}
               {tokenExpiresOn && (
-                <div className={`flex items-center gap-2 p-2 rounded-lg text-xs ${
+                <div className={`flex items-center gap-2 p-2 rounded-apple text-apple-xs ${
                   formatTimeRemaining(tokenExpiresOn).isExpired
-                    ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                    ? 'bg-apple-red/10 text-apple-red'
                     : formatTimeRemaining(tokenExpiresOn).isWarning
-                    ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400'
-                    : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                    ? 'bg-apple-orange/10 text-apple-orange'
+                    : 'bg-apple-green/10 text-apple-green'
                 }`}>
                   <Clock className="w-4 h-4" />
                   <span className="font-medium">Token: {formatTimeRemaining(tokenExpiresOn).text}</span>
                 </div>
               )}
 
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 space-y-3">
+              <div className="border-t border-apple-gray-200 dark:border-[#38383A] pt-3 space-y-3">
                 {/* Bearer Token */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
                     Bearer Token
                   </label>
                   <div className="relative">
-                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-gray-400" />
                     <input
                       type="password"
                       value={tempBearerToken}
                       onChange={(e) => setTempBearerToken(e.target.value)}
                       placeholder="Auto-filled from JSON or paste manually..."
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="apple-input pl-9"
                     />
                   </div>
                   {tempBearerToken && (
-                    <p className="text-xs text-green-500 flex items-center gap-1">
+                    <p className="text-apple-xs text-apple-green flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       Token set ({tempBearerToken.substring(0, 20)}...)
                     </p>
@@ -294,21 +292,21 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
                 {/* Account ID */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
                     Account ID
                   </label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-gray-400" />
                     <input
                       type="text"
                       value={tempAccountId}
                       onChange={(e) => setTempAccountId(e.target.value)}
                       placeholder="Auto-filled from JSON or paste manually..."
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="apple-input pl-9"
                     />
                   </div>
                   {tempAccountId && (
-                    <p className="text-xs text-green-500 flex items-center gap-1">
+                    <p className="text-apple-xs text-apple-green flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       Account ID set
                     </p>
@@ -323,17 +321,17 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
         {(agentCard || loading || error) && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <h4 className="text-apple-sm font-medium text-apple-gray-700 dark:text-apple-gray-300">
                 Agent Card
               </h4>
               {agentCard && (
                 <button
                   onClick={handleRefresh}
                   disabled={loading}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                  className="btn-apple-icon w-7 h-7"
                   title="Refresh Agent Card"
                 >
-                  <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 </button>
               )}
             </div>
@@ -346,8 +344,8 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
         )}
 
         {/* Quick Actions */}
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="pt-2 border-t border-apple-gray-200 dark:border-[#38383A]">
+          <p className="text-apple-xs text-apple-gray-500">
             Enter the A2A server endpoint URL and click Connect to fetch the Agent Card
             and start chatting.
           </p>

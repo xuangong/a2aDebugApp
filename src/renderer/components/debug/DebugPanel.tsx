@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAtom, useAtomValue } from 'jotai';
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   ChevronRight,
   ChevronDown,
@@ -19,21 +19,77 @@ import {
   Wrench,
   MessageSquare,
   GripVertical,
+  FileText,
+  List,
+  Package,
 } from 'lucide-react';
-import type { JsonRpcLogEntry, A2AResult } from '../../../shared/types';
-import { debugLogsAtom, debugPanelExpandedAtom, selectedMessageIdAtom, currentConversationAtom } from '../../atoms/chat-atoms';
+import type { JsonRpcLogEntry, A2AResult, AssistantMessage, Message } from '../../../shared/types';
+import { debugLogsAtom, debugPanelExpandedAtom, selectedMessageIdAtom, currentConversationAtom, sidePanelTabAtom, selectedToolCallAtom, messagesAtom, streamingFileArtifactsAtom } from '../../atoms/chat-atoms';
+import { ToolDetailPanel } from './ToolDetailPanel';
+import { ArtifactsPanel } from '../chat/ArtifactsPanel';
+import { JsonView, darkStyles, defaultStyles } from 'react-json-view-lite';
+import 'react-json-view-lite/dist/index.css';
+
+// Custom expand function: expand all nodes by default
+const expandAllNodes = () => true;
 
 const MIN_WIDTH = 280;
 const MAX_WIDTH = 800;
 const DEFAULT_WIDTH = 384; // w-96 = 24rem = 384px
 
-export function DebugPanel() {
+interface DebugPanelProps {
+  /** Optional external messages (for Live mode) - if not provided, uses atom */
+  messages?: Message[];
+}
+
+export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
   const [debugLogs, setDebugLogs] = useAtom(debugLogsAtom);
   const [expanded, setExpanded] = useAtom(debugPanelExpandedAtom);
+  const [activeTab, setActiveTab] = useAtom(sidePanelTabAtom);
   const selectedMessageId = useAtomValue(selectedMessageIdAtom);
+  const selectedToolCall = useAtomValue(selectedToolCallAtom);
+  const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
   const currentConversation = useAtomValue(currentConversationAtom);
+  const atomMessages = useAtomValue(messagesAtom);
+  const atomStreamingFileArtifacts = useAtomValue(streamingFileArtifactsAtom);
+
+  // Use external messages if provided (Live mode), otherwise use atom (Debug mode)
+  const messages = externalMessages ?? atomMessages;
+  // In Live mode (externalMessages provided), don't use streaming artifacts (Live is read-only)
+  const streamingFileArtifacts = externalMessages ? [] : atomStreamingFileArtifacts;
   const listRef = useRef<HTMLDivElement>(null);
   const highlightedRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Count artifacts from backend-provided file_artifacts data
+  const artifactsCount = useMemo(() => {
+    let count = 0;
+    // Use file_path for deduplication (more unique than file_name)
+    const seenFilePaths = new Set<string>();
+
+    // From completed messages - use fileArtifacts stored in message (backend-provided)
+    for (const msg of messages) {
+      if (msg.role !== 'assistant') continue;
+      const assistantMsg = msg as AssistantMessage;
+      if (Array.isArray(assistantMsg.fileArtifacts)) {
+        for (const fa of assistantMsg.fileArtifacts) {
+          if (!seenFilePaths.has(fa.file_path)) {
+            count++;
+            seenFilePaths.add(fa.file_path);
+          }
+        }
+      }
+    }
+
+    // Add streaming artifacts (dedupe by file_path)
+    for (const fa of streamingFileArtifacts) {
+      if (!seenFilePaths.has(fa.file_path)) {
+        count++;
+        seenFilePaths.add(fa.file_path);
+      }
+    }
+
+    return count;
+  }, [messages, streamingFileArtifacts]);
 
   // 宽度调整状态
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
@@ -131,16 +187,16 @@ export function DebugPanel() {
 
   if (!expanded) {
     return (
-      <div className="w-10 border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col">
+      <div className="w-10 border-l border-apple-gray-200 dark:border-[#38383A] bg-apple-gray-50 dark:bg-[#1C1C1E] flex flex-col">
         {/* 标题栏拖拽区域（与主窗口对齐） */}
-        <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-gray-900" />
+        <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-[#1C1C1E]" />
         <div className="flex-1 flex flex-col items-center py-2">
           <button
             onClick={() => setExpanded(true)}
-            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            className="btn-apple-icon"
             title="Show Debug Panel"
           >
-            <PanelRightOpen className="w-4 h-4 text-gray-500" />
+            <PanelRightOpen className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -149,93 +205,159 @@ export function DebugPanel() {
 
   return (
     <div
-      className="border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col relative"
+      className="border-l border-apple-gray-200 dark:border-[#38383A] bg-apple-gray-50 dark:bg-[#1C1C1E] flex flex-col relative"
       style={{ width: panelWidth }}
     >
       {/* 左侧拖拽手柄 */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 transition-colors z-10 ${
-          isResizing ? 'bg-blue-500' : 'bg-transparent hover:bg-blue-300'
+        className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-apple-blue transition-colors z-10 ${
+          isResizing ? 'bg-apple-blue' : 'bg-transparent hover:bg-apple-blue/50'
         }`}
         onMouseDown={handleMouseDown}
         title="Drag to resize"
       >
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 p-0.5 bg-gray-300 dark:bg-gray-600 rounded opacity-0 hover:opacity-100 transition-opacity">
-          <GripVertical className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 p-0.5 bg-apple-gray-300 dark:bg-[#48484A] rounded opacity-0 hover:opacity-100 transition-opacity">
+          <GripVertical className="w-3 h-3 text-apple-gray-500" />
         </div>
       </div>
 
       {/* 标题栏拖拽区域（与主窗口对齐） */}
-      <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-gray-900" />
+      <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-[#1C1C1E]" />
 
       {/* 头部 - 与 ChatHeader 内容区域对齐 */}
-      <div className="flex items-center justify-between px-3 py-2 min-h-[44px] border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            JSON-RPC Log
-          </span>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            ({filterType !== 'all' ? `${filteredLogs.length}/${debugLogs.length}` : debugLogs.length})
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* 类型筛选下拉框 */}
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as typeof filterType)}
-            className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <option value="all">All</option>
-            <option value="request">Request</option>
-            <option value="response">Response</option>
-            <option value="sse">SSE</option>
-            <option value="tool">Tool</option>
-          </select>
-          <button
-            onClick={handleClear}
-            className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors"
-            title="Clear logs"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-gray-500" />
-          </button>
+      <div className="flex flex-col border-b border-apple-gray-200 dark:border-[#38383A]">
+        {/* Tabs - Apple segmented control style */}
+        <div className="flex items-center px-3 pt-2">
+          <div className="apple-segmented">
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`apple-segment flex items-center gap-1.5 ${activeTab === 'logs' ? 'active' : ''}`}
+            >
+              <List className="w-3.5 h-3.5" />
+              Logs
+            </button>
+            <button
+              onClick={() => setActiveTab('artifacts')}
+              className={`apple-segment flex items-center gap-1.5 ${activeTab === 'artifacts' ? 'active' : ''}`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              Artifacts
+              {artifactsCount > 0 && (
+                <span className="text-[10px] bg-apple-blue text-white px-1 rounded-full min-w-[16px] text-center">
+                  {artifactsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('tool')}
+              className={`apple-segment flex items-center gap-1.5 ${activeTab === 'tool' ? 'active' : ''}`}
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              Tool
+              {selectedToolCall && (
+                <span className="w-1.5 h-1.5 bg-apple-blue rounded-full" />
+              )}
+            </button>
+          </div>
+          <div className="flex-1" />
           <button
             onClick={() => setExpanded(false)}
-            className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-800 rounded transition-colors"
-            title="Hide Debug Panel"
+            className="btn-apple-icon w-7 h-7"
+            title="Hide Panel"
           >
-            <PanelRightClose className="w-3.5 h-3.5 text-gray-500" />
+            <PanelRightClose className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
 
-      {/* 日志列表 */}
-      <div ref={listRef} className="flex-1 overflow-y-auto">
-        {filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-gray-500 text-center px-4">
-            {filterType !== 'all' ? 'No matching logs found.' : 'No logs yet. Send a message to see JSON-RPC interactions.'}
+        {/* Logs filter bar - only show when logs tab is active */}
+        {activeTab === 'logs' && (
+          <div className="flex items-center justify-between px-3 py-2 min-h-[36px]">
+            <div className="flex items-center gap-2">
+              <span className="text-apple-xs text-apple-gray-500">
+                {filterType !== 'all' ? `${filteredLogs.length}/${debugLogs.length}` : debugLogs.length} entries
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              {/* 类型筛选下拉框 */}
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as typeof filterType)}
+                className="text-apple-xs px-2 py-1 border border-apple-gray-300 dark:border-[#48484A] rounded-apple-sm bg-white dark:bg-[#2C2C2E] text-apple-gray-700 dark:text-apple-gray-300 focus:outline-none focus:ring-1 focus:ring-apple-blue"
+              >
+                <option value="all">All</option>
+                <option value="request">Request</option>
+                <option value="response">Response</option>
+                <option value="sse">SSE</option>
+                <option value="tool">Tool</option>
+              </select>
+              <button
+                onClick={handleClear}
+                className="btn-apple-icon w-7 h-7"
+                title="Clear logs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredLogs.map((entry) => (
-              <LogEntry
-                key={entry.id}
-                entry={entry}
-                isHighlighted={
-                  selectedMessageId !== null &&
-                  (entry.messageId === selectedMessageId || entry.responseMessageId === selectedMessageId)
-                }
-                onRefReady={(el) => {
-                  if (el) {
-                    highlightedRefs.current.set(entry.id, el);
-                  } else {
-                    highlightedRefs.current.delete(entry.id);
-                  }
-                }}
-              />
-            ))}
+        )}
+
+        {/* Tool detail header - only show when tool tab is active */}
+        {activeTab === 'tool' && selectedToolCall && (
+          <div className="flex items-center justify-between px-3 py-2 min-h-[36px]">
+            <span className="text-apple-xs text-apple-gray-500">
+              {selectedToolCall.toolName}
+            </span>
+            <button
+              onClick={() => setSelectedToolCall(null)}
+              className="text-apple-xs text-apple-blue hover:underline"
+            >
+              Clear
+            </button>
           </div>
         )}
       </div>
+
+      {/* Content */}
+      {activeTab === 'logs' && (
+        /* 日志列表 */
+        <div ref={listRef} className="flex-1 overflow-y-auto">
+          {filteredLogs.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-apple-sm text-apple-gray-400 text-center px-4">
+              {filterType !== 'all' ? 'No matching logs found.' : 'No logs yet. Send a message to see JSON-RPC interactions.'}
+            </div>
+          ) : (
+            <div className="divide-y divide-apple-gray-200 dark:divide-[#38383A]">
+              {filteredLogs.map((entry) => (
+                <LogEntry
+                  key={entry.id}
+                  entry={entry}
+                  isHighlighted={
+                    selectedMessageId !== null &&
+                    (entry.messageId === selectedMessageId || entry.responseMessageId === selectedMessageId)
+                  }
+                  onRefReady={(el) => {
+                    if (el) {
+                      highlightedRefs.current.set(entry.id, el);
+                    } else {
+                      highlightedRefs.current.delete(entry.id);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {activeTab === 'artifacts' && (
+        /* Artifacts Panel */
+        <div className="flex-1 overflow-y-auto">
+          <ArtifactsPanel messages={externalMessages} />
+        </div>
+      )}
+      {activeTab === 'tool' && (
+        /* Tool Detail Panel */
+        <ToolDetailPanel />
+      )}
     </div>
   );
 }
@@ -247,7 +369,7 @@ interface LogEntryProps {
 }
 
 function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false); // Trunk collapsed by default
   const [copied, setCopied] = useState(false);
 
   // 检测 SSE 事件是否包含工具结果
@@ -340,28 +462,30 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
       default:
         return {
           icon: ArrowDownCircle,
-          color: 'text-gray-500',
+          color: 'text-apple-gray-500',
           label: 'Unknown',
           preview: '',
         };
     }
   }, [entry, isToolResult, toolName]);
 
-  const jsonContent = useMemo(() => {
+  const jsonContent = useMemo((): object => {
     if (entry.direction === 'request' && entry.request) {
-      return JSON.stringify(entry.request.body, null, 2);
+      return entry.request.body;
     }
     if (entry.direction === 'response' && entry.response) {
-      return JSON.stringify(entry.response.data, null, 2);
+      return entry.response.data;
     }
     if (entry.direction === 'sse-event' && entry.sseEvent) {
-      return JSON.stringify(entry.sseEvent.data || entry.sseEvent.error, null, 2);
+      return entry.sseEvent.data ?? entry.sseEvent.error ?? {};
     }
-    return '{}';
+    return {};
   }, [entry]);
 
+  const jsonString = useMemo(() => JSON.stringify(jsonContent, null, 2), [jsonContent]);
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(jsonContent);
+    await navigator.clipboard.writeText(jsonString);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -377,28 +501,28 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
   return (
     <div
       ref={onRefReady}
-      className={`${isHighlighted ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-400 ring-inset' : 'bg-white dark:bg-gray-800/50'}`}
+      className={`${isHighlighted ? 'bg-apple-blue/5 ring-2 ring-apple-blue ring-inset' : 'bg-white dark:bg-[#2C2C2E]'}`}
     >
       {/* 头部 */}
       <div
-        className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${isHighlighted ? 'hover:bg-blue-100 dark:hover:bg-blue-900/50' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+        className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${isHighlighted ? 'hover:bg-apple-blue/10' : 'hover:bg-apple-gray-100 dark:hover:bg-[#38383A]'}`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <button className="p-0.5">
           {isExpanded ? (
-            <ChevronDown className="w-3 h-3 text-gray-400" />
+            <ChevronDown className="w-3 h-3 text-apple-gray-400" />
           ) : (
-            <ChevronRight className="w-3 h-3 text-gray-400" />
+            <ChevronRight className="w-3 h-3 text-apple-gray-400" />
           )}
         </button>
         <Icon className={`w-4 h-4 ${color}`} />
-        <span className="text-xs font-medium text-gray-600 dark:text-gray-400 w-16">
+        <span className="text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400 w-16">
           {label}
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-500 truncate flex-1">
+        <span className="text-apple-xs text-apple-gray-500 truncate flex-1">
           {preview}
         </span>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+        <span className="text-[10px] text-apple-gray-400 font-mono">
           {timestamp}
         </span>
       </div>
@@ -406,24 +530,26 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
       {/* 展开的内容 */}
       {isExpanded && (
         <div className="px-3 pb-3">
-          <div className="relative">
+          <div className="relative bg-apple-gray-100 dark:bg-[#1C1C1E] rounded-apple p-2 overflow-auto max-h-[500px] text-[11px]">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleCopy();
               }}
-              className="absolute top-2 right-2 p-1 bg-gray-700/80 hover:bg-gray-600 rounded transition-colors"
+              className="absolute top-2 right-2 p-1 bg-apple-gray-200 dark:bg-[#38383A] hover:bg-apple-gray-300 dark:hover:bg-[#48484A] rounded-apple-sm transition-colors z-10"
               title="Copy JSON"
             >
               {copied ? (
-                <Check className="w-3 h-3 text-green-400" />
+                <Check className="w-3 h-3 text-apple-green" />
               ) : (
-                <Copy className="w-3 h-3 text-gray-300" />
+                <Copy className="w-3 h-3 text-apple-gray-500" />
               )}
             </button>
-            <pre className="text-[10px] bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto max-h-64 font-mono whitespace-pre-wrap break-all">
-              <code>{jsonContent}</code>
-            </pre>
+            <JsonView
+              data={jsonContent}
+              shouldExpandNode={expandAllNodes}
+              style={document.documentElement.classList.contains('dark') ? darkStyles : defaultStyles}
+            />
           </div>
         </div>
       )}

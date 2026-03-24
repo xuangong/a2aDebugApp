@@ -432,6 +432,13 @@ export function TaskClarifyCard({ xmlCall, onSubmit, toolResult }: TaskClarifyCa
   const [isSubmitted, setIsSubmitted] = useState(!!toolResult);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Debug: log when XML version renders
+  console.log('[TaskClarifyCard XML] render:', {
+    toolCallId: xmlCall.toolCallId,
+    hasOnSubmit: !!onSubmit,
+    isSubmitted,
+  });
+
   // Parse question list
   const questions: Question[] = (() => {
     if (!xmlCall.content) return [];
@@ -1107,6 +1114,14 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
   const [isSubmitted, setIsSubmitted] = useState(!!toolResult);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Debug: log when this component renders
+  console.log('[NativeTaskClarifyCard] render:', {
+    toolCallId: toolCall.id,
+    hasOnSubmit: !!onSubmit,
+    streaming,
+    isSubmitted,
+  });
+
   // Parse questions from tool arguments
   const args = parseToolArguments(toolCall);
   const questions: Question[] = (() => {
@@ -1349,7 +1364,7 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
                     selectedTheme={(formValues[question.id] as string) || 'auto'}
                     onSelectTheme={(themeId) => updateValue(question.id, themeId)}
                     onApplyTheme={(themeId) => {
-                      // Apply theme = submit with selected theme
+                      // Apply theme = submit with selected theme (pass toolCallId for native format)
                       if (onSubmit && !isSubmitted && !isSubmitting) {
                         setIsSubmitting(true);
                         setIsSubmitted(true);
@@ -1358,7 +1373,7 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
                           [question.id]: themeId,
                           _selected_themes: JSON.stringify([themeId]),
                         };
-                        onSubmit(submitValues).catch((error) => {
+                        onSubmit(submitValues, toolCall.id).catch((error) => {
                           console.error('Failed to apply theme:', error);
                           setIsSubmitted(false);
                         }).finally(() => setIsSubmitting(false));
@@ -1379,12 +1394,14 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
               if (onSubmit && !isSubmitted && !isSubmitting) {
                 setIsSubmitting(true);
                 setIsSubmitted(true);
-                // Skip = let agent decide
+                // Skip = let Societas decide (aligned with main frontend)
                 const skipValues = {
                   _selected_themes: JSON.stringify(['auto']),
+                  presentation_theme: JSON.stringify(['auto']),
+                  word_theme: JSON.stringify(['auto']),
                   user: 'Please decide the answer by yourself.',
                 };
-                onSubmit(skipValues).catch((error) => {
+                onSubmit(skipValues, toolCall.id).catch((error) => {
                   console.error('Failed to skip:', error);
                   setIsSubmitted(false);
                 }).finally(() => setIsSubmitting(false));
@@ -1397,7 +1414,7 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
               disabled:opacity-50 disabled:cursor-not-allowed
               transition-colors"
           >
-            Skip
+            Let Societas Decide
           </button>
           <button
             onClick={() => {
