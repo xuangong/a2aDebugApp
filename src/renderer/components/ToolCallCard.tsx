@@ -28,7 +28,6 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
-  Copy,
   Check,
   Loader2,
   ExternalLink,
@@ -431,13 +430,6 @@ export function TaskClarifyCard({ xmlCall, onSubmit, toolResult }: TaskClarifyCa
   // If toolResult exists, form was already submitted
   const [isSubmitted, setIsSubmitted] = useState(!!toolResult);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Debug: log when XML version renders
-  console.log('[TaskClarifyCard XML] render:', {
-    toolCallId: xmlCall.toolCallId,
-    hasOnSubmit: !!onSubmit,
-    isSubmitted,
-  });
 
   // Parse question list
   const questions: Question[] = (() => {
@@ -1113,14 +1105,6 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
   const [formValues, setFormValues] = useState<Record<string, string | string[]>>({});
   const [isSubmitted, setIsSubmitted] = useState(!!toolResult);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Debug: log when this component renders
-  console.log('[NativeTaskClarifyCard] render:', {
-    toolCallId: toolCall.id,
-    hasOnSubmit: !!onSubmit,
-    streaming,
-    isSubmitted,
-  });
 
   // Parse questions from tool arguments
   const args = parseToolArguments(toolCall);

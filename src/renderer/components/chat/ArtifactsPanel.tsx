@@ -78,15 +78,6 @@ export function ArtifactsPanel({ messages: externalMessages }: ArtifactsPanelPro
       }
     }
 
-    // Debug log
-    console.log('[ArtifactsPanel] artifacts:', {
-      messagesCount: messages.length,
-      streamingCount: streamingFileArtifacts.length,
-      artifactsCount: allArtifacts.length,
-      artifacts: allArtifacts.map(a => ({ id: a.id, file_path: a.file_path })),
-      isLiveMode: !!externalMessages,
-    });
-
     return allArtifacts;
   }, [messages, streamingFileArtifacts, externalMessages]);
 
@@ -100,20 +91,13 @@ export function ArtifactsPanel({ messages: externalMessages }: ArtifactsPanelPro
     );
   }
 
-  // Debug: log every render
-  console.log('[ArtifactsPanel] RENDER', {
-    artifactsLength: artifacts.length,
-    artifactIds: artifacts.map(a => a.id),
-    artifactPaths: artifacts.map(a => a.file_path),
-  });
-
   return (
     <div className="p-2 space-y-1">
       <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-2 py-1 uppercase">
         Generated Files ({artifacts.length})
       </div>
-      {artifacts.map((artifact, index) => (
-        <ArtifactItem key={`${artifact.id}-${index}`} artifact={artifact} />
+      {artifacts.map((artifact) => (
+        <ArtifactItem key={artifact.id} artifact={artifact} />
       ))}
     </div>
   );
