@@ -125,8 +125,24 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     return [];
   }, [message.rawResponse]);
 
-  // Collect tool results (matched by tool_call_id)
-  const toolResultsMap = useMemo(() => collectToolResults(results), [results]);
+  // Collect tool results - prefer saved toolResults, fallback to extracting from results
+  const toolResultsMap = useMemo(() => {
+    // First, use saved toolResults from message (captured during streaming)
+    const map = new Map<string, ToolResultData>();
+    if (message.toolResults && message.toolResults.length > 0) {
+      for (const tr of message.toolResults) {
+        map.set(tr.tool_call_id, tr);
+      }
+    }
+    // Then, also check rawResponse for any tool results (for backwards compatibility)
+    const fromResults = collectToolResults(results);
+    for (const [key, value] of fromResults) {
+      if (!map.has(key)) {
+        map.set(key, value);
+      }
+    }
+    return map;
+  }, [message.toolResults, results]);
 
   // Collect native tool calls from DataParts and merge with message.nativeToolCalls
   // message.nativeToolCalls contains the finalized tool calls captured before streaming reset

@@ -22,6 +22,8 @@ export interface AssistantMessage {
   rawResponse: A2AResponse | A2AResult[];
   /** Native tool calls accumulated during streaming */
   nativeToolCalls?: NativeToolCall[];
+  /** Tool results accumulated during streaming (matched by tool_call_id) */
+  toolResults?: ToolResultData[];
   /** File artifacts from backend (complete tool attachments) */
   fileArtifacts?: FileArtifact[];
   createdAt: number;

@@ -144,6 +144,10 @@ export function ChatInput() {
     const state = getConversationStreamingState(streamingMapRef.current, conversationId);
     const acc = accumulatorsRef.current.get(conversationId);
     const finalToolCalls = acc?.toolCalls.getAllToolCalls() || [];
+    // Collect tool results from accumulator
+    const finalToolResults = acc?.toolResults && acc.toolResults.size > 0
+      ? Array.from(acc.toolResults.values())
+      : undefined;
     // Use fileArtifacts from accumulator ref (more reliable than streamingMap state)
     const finalFileArtifacts = acc?.fileArtifacts && acc.fileArtifacts.size > 0
       ? Array.from(acc.fileArtifacts.values())
@@ -155,6 +159,7 @@ export function ChatInput() {
       content: state.content,
       rawResponse: state.chunks,
       nativeToolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+      toolResults: finalToolResults,
       fileArtifacts: finalFileArtifacts,
       createdAt: Date.now(),
     };
@@ -272,9 +277,16 @@ export function ChatInput() {
 
         if (artifactName === 'tool_results') {
           const newToolResults = extractToolResultsFromResult(artifactUpdate);
+          console.log('[ChatInput] Received tool_results artifact:', {
+            artifactId: artifactUpdate.artifact.artifactId,
+            artifactName,
+            newToolResultsCount: newToolResults.length,
+            newToolResults: newToolResults.map(tr => ({ tool_call_id: tr.tool_call_id, success: tr.success })),
+          });
           for (const tr of newToolResults) {
             acc.toolResults.set(tr.tool_call_id, tr);
           }
+          console.log('[ChatInput] Updated acc.toolResults, size:', acc.toolResults.size);
           updateConversationStreaming(conversationId, () => ({
             toolResults: new Map(acc.toolResults),
           }));
@@ -533,12 +545,19 @@ export function ChatInput() {
     }
   };
 
-  // Auto-resize textarea
+  // Auto-resize textarea based on content
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
-    }
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset to auto to get accurate scrollHeight measurement
+    textarea.style.height = 'auto';
+
+    // Calculate new height: min 44px (single line with padding), max 200px
+    const minHeight = 44;
+    const maxHeight = 200;
+    const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = `${newHeight}px`;
   }, [input]);
 
   if (!currentConversation) return null;
@@ -547,24 +566,22 @@ export function ChatInput() {
     <div className="p-4 border-t border-apple-gray-300/60 dark:border-[#38383A] bg-white dark:bg-[#1C1C1E]">
       <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
         <div className="flex items-end gap-3">
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
-              disabled={streaming}
-              className="apple-input pr-12 resize-none min-h-[48px] py-3"
-              rows={1}
-            />
-          </div>
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            disabled={streaming}
+            className="flex-1 min-h-11 py-[10px] px-4 rounded-xl border border-apple-gray-300 dark:border-[#48484A] bg-white dark:bg-[#2C2C2E] text-apple-gray-900 dark:text-apple-gray-100 placeholder:text-apple-gray-400 dark:placeholder:text-apple-gray-500 focus:outline-none focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 resize-none text-sm leading-6"
+            rows={1}
+          />
 
           {streaming ? (
             <button
               type="button"
               onClick={handleStop}
-              className="p-3 bg-apple-red text-white rounded-apple shadow-apple-sm hover:bg-apple-red/90 transition-all duration-apple active:scale-95"
+              className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-apple-red text-white rounded-xl shadow-sm hover:bg-apple-red/90 transition-all duration-150 active:scale-95"
               title="Stop generation"
             >
               <Square className="w-5 h-5 fill-current" />
@@ -573,7 +590,7 @@ export function ChatInput() {
             <button
               type="submit"
               disabled={!input.trim()}
-              className="p-3 bg-apple-blue text-white rounded-apple shadow-apple-sm hover:bg-[#0066CC] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-apple active:scale-95"
+              className="flex-shrink-0 w-11 h-11 flex items-center justify-center bg-apple-blue text-white rounded-xl shadow-sm hover:bg-[#0066CC] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95"
               title="Send message"
             >
               <Send className="w-5 h-5" />

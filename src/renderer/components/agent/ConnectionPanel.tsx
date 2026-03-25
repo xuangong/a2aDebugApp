@@ -48,7 +48,6 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
   const [tempEndpoint, setTempEndpoint] = useState(endpoint);
   const [tempBearerToken, setTempBearerToken] = useState(authConfig.bearerToken || '');
-  const [tempAccountId, setTempAccountId] = useState(authConfig.accountId || '');
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAuthFields, setShowAuthFields] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -62,21 +61,28 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
     try {
       const data = JSON.parse(jsonInput.trim());
 
-      // 提取 secret (Bearer Token)
-      if (data.secret) {
+      // 提取 Bearer Token (支持多种格式)
+      // 本地开发: idToken (普通 JWT，可解码)
+      // 生产环境: accessToken (JWE，需 MISE 验证)
+      if (data.credentialType === 'IdToken' && data.secret) {
+        // MSAL idtoken 格式 (推荐用于本地开发)
+        setTempBearerToken(data.secret);
+      } else if (data.access_token) {
+        // SocietasCacheToken 格式 (Societas 内部 token)
+        setTempBearerToken(data.access_token);
+      } else if (data.secret) {
+        // MSAL accesstoken 格式 (生产环境 JWE token)
         setTempBearerToken(data.secret);
       }
 
-      // 提取 homeAccountId 或 realm 作为 accountId
-      if (data.homeAccountId) {
-        setTempAccountId(data.homeAccountId);
-      } else if (data.realm) {
-        setTempAccountId(data.realm);
-      }
+      // Account ID 不再需要手动填写，服务器会从 token 自动解析
 
       // 提取过期时间
       if (data.expiresOn) {
         const expiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
+        setTokenExpiresOn(expiresOn);
+      } else if (data.expires_on) {
+        const expiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
         setTokenExpiresOn(expiresOn);
       }
 
@@ -91,10 +97,9 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
     setError(null);
     setConnectionStatus('idle');
 
-    // 更新认证配置
+    // 更新认证配置 (只需要 bearerToken，accountId 由服务器自动解析)
     const newAuth = {
       bearerToken: tempBearerToken.trim() || undefined,
-      accountId: tempAccountId.trim() || undefined,
     };
     setAuthConfig(newAuth);
 
@@ -239,16 +244,36 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
               {/* Help Instructions */}
               {showHelp && (
-                <div className="p-3 bg-apple-blue/5 rounded-apple border border-apple-blue/20 text-apple-xs space-y-2">
+                <div className="p-3 bg-apple-blue/5 rounded-apple border border-apple-blue/20 text-apple-xs space-y-3">
                   <p className="font-medium text-apple-blue">
-                    How to get Token JSON from browser:
+                    How to get Token from Browser:
                   </p>
-                  <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400">
-                    <li>Open <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">localhost:3000</code> and login</li>
-                    <li>Open DevTools (F12) → Application → Local Storage</li>
-                    <li>Find key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code></li>
-                    <li>Copy the entire JSON value and paste above</li>
-                  </ol>
+
+                  {/* Local Development */}
+                  <div className="space-y-2 p-2 bg-apple-green/5 rounded-apple border border-apple-green/20">
+                    <p className="font-medium text-apple-green">🏠 Local Development (localhost)</p>
+                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                      <li>Open Societas frontend (localhost:3000) and login</li>
+                      <li>DevTools (F12) → Application → Local Storage</li>
+                      <li>Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">idtoken</code></li>
+                      <li>Copy the JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-idtoken-</code></li>
+                      <li>Paste → Extract → Connect</li>
+                    </ol>
+                    <p className="text-apple-gray-500 text-[10px]">✓ Account ID is automatically resolved from the token</p>
+                  </div>
+
+                  {/* Production / Remote */}
+                  <div className="space-y-2 p-2 bg-apple-purple/5 rounded-apple border border-apple-purple/20">
+                    <p className="font-medium text-apple-purple">☁️ Production / Remote Environment</p>
+                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                      <li>Open Societas frontend (production URL) and login</li>
+                      <li>DevTools (F12) → Application → Local Storage</li>
+                      <li>Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code></li>
+                      <li>Copy the JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-accesstoken-</code></li>
+                      <li>Paste → Extract → Connect</li>
+                    </ol>
+                    <p className="text-apple-gray-500 text-[10px]">Note: accessToken is JWE (encrypted), validated by MISE Container on server</p>
+                  </div>
                 </div>
               )}
 
@@ -290,27 +315,12 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                   )}
                 </div>
 
-                {/* Account ID */}
-                <div className="space-y-1">
-                  <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
-                    Account ID
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-gray-400" />
-                    <input
-                      type="text"
-                      value={tempAccountId}
-                      onChange={(e) => setTempAccountId(e.target.value)}
-                      placeholder="Auto-filled from JSON or paste manually..."
-                      className="apple-input pl-9"
-                    />
-                  </div>
-                  {tempAccountId && (
-                    <p className="text-apple-xs text-apple-green flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      Account ID set
-                    </p>
-                  )}
+                {/* Account ID - Auto resolved notice */}
+                <div className="p-2 bg-apple-gray-100 dark:bg-[#38383A] rounded-apple">
+                  <p className="text-apple-xs text-apple-gray-600 dark:text-apple-gray-400 flex items-center gap-1">
+                    <User className="w-3 h-3" />
+                    Account ID will be auto-resolved from token by the server
+                  </p>
                 </div>
               </div>
             </div>

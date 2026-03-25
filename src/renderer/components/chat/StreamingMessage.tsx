@@ -33,6 +33,15 @@ interface StreamingMessageProps {
 }
 
 export function StreamingMessage({ content, viewMode, streamingToolCalls = [], streamingToolResults = new Map(), onSubmitTaskClarify }: StreamingMessageProps) {
+  // Debug log for streaming tool results
+  console.log('[StreamingMessage] render:', {
+    contentLen: content.length,
+    toolCallsCount: streamingToolCalls.length,
+    toolResultsSize: streamingToolResults.size,
+    toolCallIds: streamingToolCalls.map(tc => tc.id),
+    toolResultIds: Array.from(streamingToolResults.keys()),
+  });
+
   return (
     <div className="flex justify-start w-full animate-fade-in">
       <div className="w-full apple-message-assistant">
