@@ -28,6 +28,7 @@ import {
   TrendingUp,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Check,
   Loader2,
   ExternalLink,
@@ -1423,6 +1424,259 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Slide interface for presentation planner
+ */
+interface Slide {
+  slideNumber?: number;
+  title?: string;
+  description?: string;
+  purpose?: string;
+  keyPoints?: string[];
+  visualNeeds?: string;
+  _changeStatus?: 'added' | 'modified' | 'unchanged';
+}
+
+interface PresentationPlan {
+  title?: string;
+  slides?: Slide[];
+  slides_outline?: Slide[];
+}
+
+/**
+ * Native Presentation Planner Card - displays slide outline with confirm/edit capability
+ * Aligned with main frontend's PresentationPlannerCard
+ */
+export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, streaming = false }: NativeToolCallCardProps & {
+  onSubmit?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
+}) {
+  const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
+  const setSidePanelTab = useSetAtom(sidePanelTabAtom);
+  const [isSubmitted, setIsSubmitted] = useState(!!toolResult);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+
+  // Parse plan from tool arguments
+  const args = parseToolArguments(toolCall);
+  const plan: PresentationPlan | null = (() => {
+    const rawPlan = args.plan;
+    if (!rawPlan) return null;
+    if (typeof rawPlan === 'string') {
+      try {
+        return JSON.parse(rawPlan);
+      } catch {
+        return null;
+      }
+    }
+    return rawPlan as PresentationPlan;
+  })();
+
+  // Get slides array (support both 'slides' and 'slides_outline' formats)
+  const slides = plan?.slides || plan?.slides_outline || [];
+
+  // Click handler to show in right panel
+  const handleShowInPanel = useCallback(() => {
+    const selectedTool: SelectedToolCall = {
+      type: 'native',
+      toolName: toolCall.function?.name || 'presentation-planner',
+      toolCallId: toolCall.id,
+      arguments: args,
+      result: toolResult ? {
+        success: toolResult.success,
+        output: toolResult.result,
+      } : undefined,
+      streaming,
+    };
+    setSelectedToolCall(selectedTool);
+    setSidePanelTab('tool');
+  }, [toolCall, args, toolResult, streaming, setSelectedToolCall, setSidePanelTab]);
+
+  // Handle confirm plan
+  const handleConfirm = async () => {
+    if (!onSubmit || isSubmitting || isSubmitted) return;
+
+    setIsSubmitting(true);
+    try {
+      // Build response with the confirmed plan
+      const slideCount = slides.length;
+      const outputWithDirective = {
+        _tool_name: 'presentation_planner', // Signal to useTaskClarify which tool this is
+        OVERRIDE_INSTRUCTION:
+          `CRITICAL: The user has confirmed the outline. ` +
+          `This is the user's FINAL plan with ${slideCount} slides. ` +
+          `Use ONLY this 'slides' array for ALL batch generation.`,
+        confirmed: true,
+        totalSlides: slideCount,
+        title: plan?.title,
+        slides: slides.map((slide, index) => ({
+          ...slide,
+          slideNumber: index + 1,
+          _changeStatus: 'unchanged' as const,
+        })),
+      };
+
+      await onSubmit(outputWithDirective as unknown as Record<string, string | string[]>, toolCall.id);
+      setIsSubmitted(true);
+    } catch (error) {
+      console.error('Failed to confirm plan:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Navigation
+  const goToPrevSlide = () => {
+    setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1));
+  };
+
+  const goToNextSlide = () => {
+    setCurrentSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0));
+  };
+
+  // If no valid plan or still streaming with no slides
+  if (!plan || (slides.length === 0 && !streaming)) {
+    return (
+      <div className="my-3 rounded-xl border bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 bg-purple-100/50 dark:bg-purple-900/30">
+          <Presentation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+          <span className="font-medium text-purple-700 dark:text-purple-300">Presentation Plan</span>
+          {streaming && (
+            <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded flex items-center gap-1">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Loading...
+            </span>
+          )}
+          <div className="flex-1" />
+          <button
+            onClick={handleShowInPanel}
+            className="p-1 rounded hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors"
+            title="View in side panel"
+          >
+            <ExternalLink className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentSlide = slides[currentSlideIndex];
+  const displayIndex = streaming && slides.length > 0 ? slides.length - 1 : currentSlideIndex;
+
+  return (
+    <div className="my-3 rounded-xl border bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-purple-100/50 dark:bg-purple-900/30 border-b border-purple-200 dark:border-purple-700">
+        <Presentation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+        <span className="font-medium text-purple-700 dark:text-purple-300">
+          {plan.title || 'Presentation Plan'}
+        </span>
+        {streaming && (
+          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Streaming
+          </span>
+        )}
+        {isSubmitted && (
+          <span className="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded flex items-center gap-1">
+            <Check className="w-3 h-3" />
+            Confirmed
+          </span>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={handleShowInPanel}
+          className="p-1 rounded hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors"
+          title="View in side panel"
+        >
+          <ExternalLink className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+        </button>
+      </div>
+
+      {/* Slide Content */}
+      {slides.length > 0 && (
+        <div className="px-6 py-5 min-h-[120px]">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+            {slides[displayIndex]?.title || (streaming ? '' : 'Untitled Slide')}
+          </h3>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap leading-relaxed">
+            {slides[displayIndex]?.description || (streaming ? '' : 'No description')}
+          </p>
+          {slides[displayIndex]?.keyPoints && slides[displayIndex].keyPoints!.length > 0 && (
+            <ul className="mt-3 space-y-1">
+              {slides[displayIndex].keyPoints!.map((point, i) => (
+                <li key={i} className="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
+                  <span className="text-purple-500 mt-1">•</span>
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Navigation */}
+      {slides.length > 1 && (
+        <div className="flex items-center justify-between px-2 py-2 bg-purple-100/30 dark:bg-purple-900/40">
+          <button
+            onClick={goToPrevSlide}
+            disabled={streaming || currentSlideIndex === 0}
+            className="p-2 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          </button>
+          <span className="text-sm text-purple-700 dark:text-purple-300">
+            Slide {displayIndex + 1} / {slides.length}
+          </span>
+          <button
+            onClick={goToNextSlide}
+            disabled={streaming || currentSlideIndex === slides.length - 1}
+            className="p-2 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          </button>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      {onSubmit && !streaming && !isSubmitted && (
+        <div className="flex justify-center gap-3 px-4 py-4 border-t border-purple-200 dark:border-purple-700">
+          <button
+            onClick={handleConfirm}
+            disabled={isSubmitting}
+            className="px-6 py-2 text-sm font-medium rounded-lg
+              bg-purple-600 text-white
+              hover:bg-purple-700
+              disabled:opacity-50 disabled:cursor-not-allowed
+              transition-colors flex items-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Confirming...
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                Confirm Outline
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Submitted state */}
+      {isSubmitted && (
+        <div className="flex justify-center px-4 py-3 border-t border-purple-200 dark:border-purple-700">
+          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+            <CheckCircle className="w-4 h-4" />
+            <span>Outline confirmed - agent will generate slides</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

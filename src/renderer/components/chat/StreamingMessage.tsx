@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm';
 import { Loader2, ExternalLink } from 'lucide-react';
 import type { ViewMode, SelectedToolCall } from '../../atoms/chat-atoms';
 import { selectedToolCallAtom, sidePanelTabAtom } from '../../atoms/chat-atoms';
-import { NativeToolCallCard, NativeTaskClarifyCard, NativeCompleteCard, NativeAskCard } from '../ToolCallCard';
+import { NativeToolCallCard, NativeTaskClarifyCard, NativeCompleteCard, NativeAskCard, NativePresentationPlannerCard } from '../ToolCallCard';
 import type { NativeToolCall, ToolResultData } from '../../../shared/types';
 
 // Normalize tool name to match against known client tools
@@ -95,6 +95,16 @@ function RenderedStreamingContent({ content, streamingToolCalls, streamingToolRe
     if (normalizedName === 'task-clarify') {
       parts.push(
         <NativeTaskClarifyCard
+          key={toolKey}
+          toolCall={toolCall}
+          toolResult={toolResult}
+          streaming={isToolStreaming}
+          onSubmit={onSubmitTaskClarify}
+        />
+      );
+    } else if (normalizedName === 'presentation-planner') {
+      parts.push(
+        <NativePresentationPlannerCard
           key={toolKey}
           toolCall={toolCall}
           toolResult={toolResult}

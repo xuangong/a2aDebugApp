@@ -14,6 +14,7 @@ import {
   NativeCompleteCard,
   NativeAskCard,
   NativeTaskClarifyCard,
+  NativePresentationPlannerCard,
 } from '../ToolCallCard';
 import { extractPartsFromResult, collectToolResults, collectNativeToolCalls } from '../../../shared/types';
 import { JsonView, darkStyles, defaultStyles } from 'react-json-view-lite';
@@ -195,6 +196,8 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
       return <NativeAskCard key={key} toolCall={tc} toolResult={toolResult} />;
     } else if (normalizedName === 'task-clarify') {
       return <NativeTaskClarifyCard key={key} toolCall={tc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} />;
+    } else if (normalizedName === 'presentation-planner') {
+      return <NativePresentationPlannerCard key={key} toolCall={tc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} />;
     } else {
       return <NativeToolCallCard key={key} toolCall={tc} toolResult={toolResult} />;
     }

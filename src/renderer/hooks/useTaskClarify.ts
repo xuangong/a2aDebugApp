@@ -29,17 +29,21 @@ import {
 import type { UserMessage, A2ARequest, JsonRpcLogEntry } from '../../shared/types';
 
 /**
- * 格式化 task-clarify 响应为 native tool call JSON 格式
+ * 格式化 tool result 响应为 native tool call JSON 格式
+ * 支持 task_clarify, presentation_planner 等多种 client tools
  */
 function formatNativeToolResultMessage(
   responses: Record<string, string | string[]>,
   toolCallId: string,
+  toolName: string = 'task_clarify',
 ): string {
+  // Remove internal _tool_name field before sending
+  const { _tool_name, ...cleanResponses } = responses as Record<string, unknown>;
   return JSON.stringify({
     tool_result: {
-      tool_name: 'task_clarify',
+      tool_name: toolName,
       tool_call_id: toolCallId,
-      result: responses,
+      result: cleanResponses,
     },
   });
 }
@@ -90,8 +94,11 @@ export function useTaskClarify() {
         toolCallId,
       });
 
+      // Detect tool name from responses (default to task_clarify)
+      const toolName = typeof responses._tool_name === 'string' ? responses._tool_name : 'task_clarify';
+
       // Format as native tool call
-      const messageContent = formatNativeToolResultMessage(responses, toolCallId);
+      const messageContent = formatNativeToolResultMessage(responses, toolCallId, toolName);
       console.log('[useTaskClarify] messageContent:', messageContent);
 
       // Build raw request for debugging (before creating message)
