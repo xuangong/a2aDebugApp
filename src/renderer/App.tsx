@@ -14,6 +14,7 @@ import {
   debugLogsMapAtom,
   appModeAtom,
   liveSelectedContextIdAtom,
+  authConfigAtom,
 } from './atoms/chat-atoms';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { ChatView } from './components/chat/ChatView';
@@ -28,6 +29,7 @@ export default function App() {
   const setMessagesMap = useSetAtom(messagesMapAtom);
   const setEndpoint = useSetAtom(endpointAtom);
   const setDebugLogsMap = useSetAtom(debugLogsMapAtom);
+  const setAuthConfig = useSetAtom(authConfigAtom);
   const appMode = useAtomValue(appModeAtom);
   const liveSelectedContextId = useAtomValue(liveSelectedContextIdAtom);
 
@@ -62,6 +64,11 @@ export default function App() {
         const loadedConfig = await window.electronAPI.getConfig();
         setConfig(loadedConfig);
         setEndpoint(loadedConfig.defaultEndpoint);
+
+        // Load saved auth config
+        if (loadedConfig.auth) {
+          setAuthConfig(loadedConfig.auth);
+        }
 
         const conversations = await window.electronAPI.listConversations();
         setConversations(conversations);

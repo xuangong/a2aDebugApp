@@ -3,7 +3,7 @@
  * Apple Design System
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
 import { Server, RefreshCw, Check, X, Link, Key, User, HelpCircle, Clock, Clipboard } from 'lucide-react';
 import {
@@ -51,9 +51,44 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAuthFields, setShowAuthFields] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [tokenExpiresOn, setTokenExpiresOn] = useState<number | null>(null);
+  const [tokenExpiresOn, setTokenExpiresOn] = useState<number | null>(authConfig.expiresOn || null);
   const [jsonInput, setJsonInput] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
+
+  // Sync tempBearerToken with authConfig on mount and when authConfig changes
+  useEffect(() => {
+    if (authConfig.bearerToken) {
+      setTempBearerToken(authConfig.bearerToken);
+    }
+    if (authConfig.expiresOn) {
+      setTokenExpiresOn(authConfig.expiresOn);
+    }
+  }, [authConfig.bearerToken, authConfig.expiresOn]);
+
+  // Check if current token is expired
+  const isTokenExpired = tokenExpiresOn ? Date.now() / 1000 > tokenExpiresOn : false;
+  const hasValidToken = !!authConfig.bearerToken && !isTokenExpired;
+
+  // Validate endpoint format
+  const validateEndpoint = (url: string): { valid: boolean; error?: string } => {
+    if (!url.trim()) {
+      return { valid: false, error: 'Endpoint is required' };
+    }
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return { valid: false, error: 'Invalid protocol. Use http:// or https://' };
+      }
+      if (!url.endsWith('/')) {
+        return { valid: false, error: 'Endpoint should end with /' };
+      }
+      return { valid: true };
+    } catch {
+      return { valid: false, error: 'Invalid URL format' };
+    }
+  };
+
+  const endpointValidation = validateEndpoint(tempEndpoint);
 
   // 解析粘贴的 JSON
   const handleParseJson = () => {
@@ -72,18 +107,36 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
         setTempBearerToken(data.access_token);
       } else if (data.secret) {
         // MSAL accesstoken 格式 (生产环境 JWE token)
+        // Validate target contains "Societas.Access" for production accessTokens
+        if (data.credentialType === 'AccessToken' && data.target) {
+          if (!data.target.includes('Societas.Access')) {
+            setParseError(`Wrong token target: "${data.target}". Please use the accesstoken with target containing "Societas.Access".`);
+            return;
+          }
+        }
         setTempBearerToken(data.secret);
+      } else {
+        setParseError('No valid token found in JSON. Expected "secret" or "access_token" field.');
+        return;
       }
 
       // Account ID 不再需要手动填写，服务器会从 token 自动解析
 
-      // 提取过期时间
+      // 提取过期时间并检查是否已过期
+      let parsedExpiresOn: number | null = null;
       if (data.expiresOn) {
-        const expiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
-        setTokenExpiresOn(expiresOn);
+        parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
       } else if (data.expires_on) {
-        const expiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
-        setTokenExpiresOn(expiresOn);
+        parsedExpiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
+      }
+
+      if (parsedExpiresOn) {
+        const now = Math.floor(Date.now() / 1000);
+        if (parsedExpiresOn <= now) {
+          setParseError('Token has already expired. Please get a new token from the browser.');
+          return;
+        }
+        setTokenExpiresOn(parsedExpiresOn);
       }
 
       setJsonInput('');
@@ -93,13 +146,24 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   };
 
   const handleConnect = async () => {
+    // Pre-connect validation
+    if (tokenExpiresOn) {
+      const now = Math.floor(Date.now() / 1000);
+      if (tokenExpiresOn <= now) {
+        setError('Token has expired. Please get a new token from the browser.');
+        setConnectionStatus('error');
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     setConnectionStatus('idle');
 
-    // 更新认证配置 (只需要 bearerToken，accountId 由服务器自动解析)
+    // 更新认证配置 (包含 bearerToken 和 expiresOn)
     const newAuth = {
       bearerToken: tempBearerToken.trim() || undefined,
+      expiresOn: tokenExpiresOn || undefined,
     };
     setAuthConfig(newAuth);
 
@@ -167,12 +231,12 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                 value={tempEndpoint}
                 onChange={(e) => setTempEndpoint(e.target.value)}
                 placeholder="http://localhost:8000/a2a/"
-                className="apple-input pl-9"
+                className={`apple-input pl-9 ${!endpointValidation.valid && tempEndpoint ? 'border-apple-red' : ''}`}
               />
             </div>
             <button
               onClick={handleConnect}
-              disabled={loading || !tempEndpoint.trim()}
+              disabled={loading || !endpointValidation.valid}
               className="btn-apple flex items-center gap-2"
             >
               {loading ? (
@@ -183,6 +247,13 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
               Connect
             </button>
           </div>
+          {/* Endpoint validation error */}
+          {!endpointValidation.valid && tempEndpoint && (
+            <p className="text-apple-xs text-apple-red flex items-center gap-1">
+              <X className="w-3 h-3" />
+              {endpointValidation.error}
+            </p>
+          )}
           {connectionStatus === 'success' && (
             <p className="text-apple-xs text-apple-green flex items-center gap-1">
               <Check className="w-3 h-3" />
@@ -199,6 +270,20 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
           >
             <Key className="w-4 h-4" />
             Authentication Settings
+            {/* Auth status indicator */}
+            {hasValidToken ? (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-apple-green/20 text-apple-green rounded-full">
+                ● Set
+              </span>
+            ) : authConfig.bearerToken && isTokenExpired ? (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-apple-red/20 text-apple-red rounded-full">
+                ● Expired
+              </span>
+            ) : (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-apple-gray-200 dark:bg-apple-gray-600 text-apple-gray-500 dark:text-apple-gray-400 rounded-full">
+                ○ Not Set
+              </span>
+            )}
             <span className={`text-apple-xs transition-transform ${showAuthFields ? 'rotate-180' : ''}`}>
               ▼
             </span>
@@ -269,9 +354,16 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                       <li>Open Societas frontend (production URL) and login</li>
                       <li>DevTools (F12) → Application → Local Storage</li>
                       <li>Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code></li>
-                      <li>Copy the JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-accesstoken-</code></li>
-                      <li>Paste → Extract → Connect</li>
+                      <li>Find the JSON where <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target</code> contains <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">Societas.Access</code></li>
+                      <li>Copy the entire JSON → Paste → Extract → Connect</li>
                     </ol>
+                    <div className="mt-2 p-2 bg-apple-orange/10 rounded-apple border border-apple-orange/30">
+                      <p className="text-apple-orange font-medium">⚠️ Important:</p>
+                      <p className="text-apple-gray-600 dark:text-apple-gray-400">
+                        Multiple accesstokens may exist. Only use the one with <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target: "...Societas.Access"</code>.
+                        Other tokens (e.g., titles.prod.mos.microsoft.com) will not work.
+                      </p>
+                    </div>
                     <p className="text-apple-gray-500 text-[10px]">Note: accessToken is JWE (encrypted), validated by MISE Container on server</p>
                   </div>
                 </div>

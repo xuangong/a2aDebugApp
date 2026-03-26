@@ -248,35 +248,35 @@ interface ThemeOption {
 
 // Word themes (A4 ratio 1:1.414) - aligned with main frontend
 const WORD_THEMES: ThemeOption[] = [
-  { id: 'resume', name: 'Resume', preview_url: '/themes/word/resume.png', description: 'Professional and clean theme optimized for resume documents' },
-  { id: 'poster', name: 'Poster', preview_url: '/themes/word/poster.png', description: 'Eye-catching and bold theme designed for posters and flyers' },
-  { id: 'letter', name: 'Letter', preview_url: '/themes/word/letter.png', description: 'Classic and formal theme suitable for letters and official correspondence' },
+  { id: 'resume', name: 'Resume', preview_url: './themes/word/resume.png', description: 'Professional and clean theme optimized for resume documents' },
+  { id: 'poster', name: 'Poster', preview_url: './themes/word/poster.png', description: 'Eye-catching and bold theme designed for posters and flyers' },
+  { id: 'letter', name: 'Letter', preview_url: './themes/word/letter.png', description: 'Classic and formal theme suitable for letters and official correspondence' },
 ];
 
 // Presentation themes (3:2 ratio) - aligned with main frontend
 const PRESENTATION_THEMES: ThemeOption[] = [
-  { id: 'auto', name: 'Auto', preview_url: '/themes/presentation/auto.png', description: 'Intelligent adaptive theme' },
-  { id: 'azure', name: 'Azure', preview_url: '/themes/presentation/azure.png', description: 'Minimalist clean design with soft blue accents' },
-  { id: 'ocean', name: 'Ocean', preview_url: '/themes/presentation/ocean.png', description: 'Minimal and data-driven design' },
-  { id: 'ivory_parchment', name: 'Ivory Parchment', preview_url: '/themes/presentation/ivory_parchment.png', description: 'Classic elegant theme' },
-  { id: 'copilot', name: 'Copilot', preview_url: '/themes/presentation/copilot.png', description: 'Microsoft Copilot-inspired design' },
-  { id: 'forest', name: 'Forest', preview_url: '/themes/presentation/forest.png', description: 'Fresh, bold design with vibrant greens' },
-  { id: 'matrix_console_neon', name: 'Matrix Console Neon', preview_url: '/themes/presentation/matrix_console_neon.png', description: 'Futuristic console theme' },
-  { id: 'copper', name: 'Copper', preview_url: '/themes/presentation/copper.png', description: 'Luxurious formal interface' },
-  { id: 'pinkblack', name: 'Pink Black', preview_url: '/themes/presentation/pinkblack.png', description: 'Bold and modern design' },
+  { id: 'auto', name: 'Auto', preview_url: './themes/presentation/auto.png', description: 'Intelligent adaptive theme' },
+  { id: 'azure', name: 'Azure', preview_url: './themes/presentation/azure.png', description: 'Minimalist clean design with soft blue accents' },
+  { id: 'ocean', name: 'Ocean', preview_url: './themes/presentation/ocean.png', description: 'Minimal and data-driven design' },
+  { id: 'ivory_parchment', name: 'Ivory Parchment', preview_url: './themes/presentation/ivory_parchment.png', description: 'Classic elegant theme' },
+  { id: 'copilot', name: 'Copilot', preview_url: './themes/presentation/copilot.png', description: 'Microsoft Copilot-inspired design' },
+  { id: 'forest', name: 'Forest', preview_url: './themes/presentation/forest.png', description: 'Fresh, bold design with vibrant greens' },
+  { id: 'matrix_console_neon', name: 'Matrix Console Neon', preview_url: './themes/presentation/matrix_console_neon.png', description: 'Futuristic console theme' },
+  { id: 'copper', name: 'Copper', preview_url: './themes/presentation/copper.png', description: 'Luxurious formal interface' },
+  { id: 'pinkblack', name: 'Pink Black', preview_url: './themes/presentation/pinkblack.png', description: 'Bold and modern design' },
 ];
 
 // Excel visualization themes - aligned with main frontend
 const EXCEL_THEMES: ThemeOption[] = [
-  { id: 'auto', name: 'Auto', preview_url: '/themes/excel_visualization/auto.png', description: 'Auto selected theme' },
-  { id: 'slate_mono_brief', name: 'Slate Mono', preview_url: '/themes/excel_visualization/slate.png', description: 'Slate Mono Brief' },
-  { id: 'azure', name: 'Azure', preview_url: '/themes/excel_visualization/azure.png', description: 'Minimalist analytics theme' },
-  { id: 'forest', name: 'Forest', preview_url: '/themes/excel_visualization/forest.png', description: 'Vibrant green theme' },
-  { id: 'copilot', name: 'Copilot', preview_url: '/themes/excel_visualization/copilot.png', description: 'Microsoft-inspired design' },
-  { id: 'sage_mist_minimal', name: 'Sage Mist', preview_url: '/themes/excel_visualization/sage.png', description: 'Sage Mist Minimal' },
-  { id: 'copper', name: 'Copper', preview_url: '/themes/excel_visualization/copper.png', description: 'Luxurious warm-toned theme' },
-  { id: 'executive', name: 'Executive', preview_url: '/themes/excel_visualization/executive.png', description: 'Professional corporate theme' },
-  { id: 'teal', name: 'Teal', preview_url: '/themes/excel_visualization/teal.png', description: 'Fresh green and teal palette' },
+  { id: 'auto', name: 'Auto', preview_url: './themes/excel_visualization/auto.png', description: 'Auto selected theme' },
+  { id: 'slate_mono_brief', name: 'Slate Mono', preview_url: './themes/excel_visualization/slate.png', description: 'Slate Mono Brief' },
+  { id: 'azure', name: 'Azure', preview_url: './themes/excel_visualization/azure.png', description: 'Minimalist analytics theme' },
+  { id: 'forest', name: 'Forest', preview_url: './themes/excel_visualization/forest.png', description: 'Vibrant green theme' },
+  { id: 'copilot', name: 'Copilot', preview_url: './themes/excel_visualization/copilot.png', description: 'Microsoft-inspired design' },
+  { id: 'sage_mist_minimal', name: 'Sage Mist', preview_url: './themes/excel_visualization/sage.png', description: 'Sage Mist Minimal' },
+  { id: 'copper', name: 'Copper', preview_url: './themes/excel_visualization/copper.png', description: 'Luxurious warm-toned theme' },
+  { id: 'executive', name: 'Executive', preview_url: './themes/excel_visualization/executive.png', description: 'Professional corporate theme' },
+  { id: 'teal', name: 'Teal', preview_url: './themes/excel_visualization/teal.png', description: 'Fresh green and teal palette' },
 ];
 
 /**

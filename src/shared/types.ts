@@ -720,6 +720,8 @@ export interface AuthConfig {
   bearerToken?: string;
   /** Account ID - for backend tenant isolation */
   accountId?: string;
+  /** Token expiration timestamp (seconds since epoch) */
+  expiresOn?: number;
 }
 
 // ===== Config Types =====

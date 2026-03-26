@@ -2,8 +2,10 @@
  * A2A HTTP 客户端
  *
  * 实现 A2A 0.3.0 协议的客户端通信
+ * 使用 Electron net 模块确保打包后网络请求正常工作
  */
 
+import { net } from 'electron';
 import type {
   A2APart,
   A2ARequest,
@@ -64,10 +66,17 @@ export class A2AClient {
     const url = new URL(this.config.endpoint);
     const agentCardUrl = `${url.origin}${url.pathname.replace(/\/$/, '')}/.well-known/agent.json`;
 
-    const response = await fetch(agentCardUrl, {
+    const headers = this.buildHeaders({ 'Accept': 'application/json' });
+    console.log('[A2A Debug] getAgentCard URL:', agentCardUrl);
+    console.log('[A2A Debug] getAgentCard headers:', {
+      ...headers,
+      Authorization: headers.Authorization ? `Bearer ${headers.Authorization.substring(7, 30)}...` : 'NOT SET',
+    });
+
+    // Use Electron's net.fetch for better compatibility in packaged apps
+    const response = await net.fetch(agentCardUrl, {
       method: 'GET',
-      headers: this.buildHeaders({ 'Accept': 'application/json' }),
-      signal: AbortSignal.timeout(this.config.timeout || 10000),
+      headers,
     });
 
     if (!response.ok) {
@@ -83,11 +92,11 @@ export class A2AClient {
   async send(message: string, session: A2ASession): Promise<A2AResponse> {
     const request = this.buildRequest('message/send', message, session);
 
-    const response = await fetch(this.config.endpoint, {
+    // Use Electron's net.fetch for better compatibility in packaged apps
+    const response = await net.fetch(this.config.endpoint, {
       method: 'POST',
       headers: this.buildHeaders(),
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(this.config.timeout || 30000),
     });
 
     if (!response.ok) {
@@ -114,11 +123,11 @@ export class A2AClient {
     });
 
     try {
-      const response = await fetch(this.config.endpoint, {
+      // Use Electron's net.fetch for better compatibility in packaged apps
+      const response = await net.fetch(this.config.endpoint, {
         method: 'POST',
         headers: this.buildHeaders(),
         body: JSON.stringify(request),
-        signal: abortController.signal,
       });
 
       if (!response.ok) {
