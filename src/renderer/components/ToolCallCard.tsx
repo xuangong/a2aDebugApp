@@ -1460,36 +1460,13 @@ export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
-  // Parse plan from tool arguments OR from toolResult (when already submitted)
+  // Parse plan from tool arguments
+  // Note: For client tools like presentation-planner, toolResult is not returned from server.
+  // The "result" is the user's confirmation which is sent TO the server, not FROM it.
   const args = parseToolArguments(toolCall);
-  const plan: PresentationPlan | null = (() => {
-    // First try to get from toolResult (response after submission)
-    if (toolResult?.result) {
-      const resultData = toolResult.result;
-      if (typeof resultData === 'object' && resultData !== null) {
-        const resultObj = resultData as Record<string, unknown>;
-        // Check if result contains slides directly
-        if (resultObj.slides || resultObj.slides_outline) {
-          return resultObj as PresentationPlan;
-        }
-        // Check if result is wrapped in another object
-        if (resultObj.plan && typeof resultObj.plan === 'object') {
-          return resultObj.plan as PresentationPlan;
-        }
-      }
-      if (typeof resultData === 'string') {
-        try {
-          const parsed = JSON.parse(resultData);
-          if (parsed.slides || parsed.slides_outline) {
-            return parsed as PresentationPlan;
-          }
-        } catch {
-          // Not JSON, ignore
-        }
-      }
-    }
 
-    // Fall back to tool arguments (initial call)
+  const plan: PresentationPlan | null = (() => {
+    // Get plan from tool arguments
     const rawPlan = args.plan;
     if (!rawPlan) return null;
     if (typeof rawPlan === 'string') {

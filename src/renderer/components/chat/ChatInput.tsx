@@ -550,14 +550,22 @@ export function ChatInput() {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
-    // Reset to auto to get accurate scrollHeight measurement
-    textarea.style.height = 'auto';
+    const adjustHeight = () => {
+      // Reset to auto to get accurate scrollHeight measurement
+      textarea.style.height = 'auto';
 
-    // Calculate new height: min 44px (single line with padding), max 200px
-    const minHeight = 44;
-    const maxHeight = 200;
-    const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
-    textarea.style.height = `${newHeight}px`;
+      // Calculate new height: min 44px (single line with padding), max 200px
+      const minHeight = 44;
+      const maxHeight = 200;
+      const newHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+      textarea.style.height = `${newHeight}px`;
+    };
+
+    adjustHeight();
+
+    // Also listen for window resize to recalculate height
+    window.addEventListener('resize', adjustHeight);
+    return () => window.removeEventListener('resize', adjustHeight);
   }, [input]);
 
   if (!currentConversation) return null;

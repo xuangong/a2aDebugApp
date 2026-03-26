@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { CheckCircle, Eye, Code, FileText, Copy, Check, Maximize2, Minimize2 } from 'lucide-react';
+import { CheckCircle, Eye, Code, FileText, Copy, Check, Maximize2, Minimize2, Presentation, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { UserMessage as UserMessageType } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
 import { JsonView, darkStyles } from 'react-json-view-lite';
@@ -41,9 +41,147 @@ function parseToolResult(content: string): { toolName: string; toolCallId?: stri
 }
 
 /**
+ * Rendered view for presentation_planner tool_result
+ */
+function PresentationPlannerResultContent({ result }: { result: Record<string, unknown> }) {
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+
+  // Get slides from result
+  const slides = (result.slides || []) as Array<{
+    slideNumber?: number;
+    slide_number?: number;
+    title?: string;
+    content?: string | string[];
+    slide_intent?: string;
+    narrative?: string;
+  }>;
+  const title = result.title as string | undefined;
+  const totalSlides = result.totalSlides as number | undefined || slides.length;
+  const currentSlide = slides[currentSlideIndex];
+
+  const goToPrevSlide = () => {
+    setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : slides.length - 1));
+  };
+
+  const goToNextSlide = () => {
+    setCurrentSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0));
+  };
+
+  if (slides.length === 0) {
+    // No slides, show simple result
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-white/90">
+          <Presentation className="w-4 h-4" />
+          <span className="text-apple-xs font-medium uppercase tracking-wide">
+            Presentation Planner Confirmed
+          </span>
+        </div>
+        <div className="bg-white/15 rounded-apple-sm p-2 text-white/80 text-sm">
+          {result.confirmed ? 'Plan confirmed' : JSON.stringify(result)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Header */}
+      <div className="flex items-center gap-2 text-white/90">
+        <Presentation className="w-4 h-4" />
+        <span className="text-apple-xs font-medium uppercase tracking-wide">
+          Presentation Plan Confirmed
+        </span>
+        <span className="text-apple-xs text-white/60">
+          ({totalSlides} slides)
+        </span>
+      </div>
+
+      {/* Title */}
+      {title && (
+        <div className="text-white font-medium">{title}</div>
+      )}
+
+      {/* Slide viewer */}
+      <div className="bg-white/15 rounded-apple-sm overflow-hidden">
+        {/* Slide header with navigation */}
+        <div className="flex items-center justify-between px-3 py-2 bg-white/10 border-b border-white/10">
+          <button
+            onClick={goToPrevSlide}
+            className="p-1 rounded hover:bg-white/20 transition-colors"
+            title="Previous slide"
+          >
+            <ChevronLeft className="w-4 h-4 text-white/70" />
+          </button>
+          <span className="text-apple-xs text-white/70">
+            Slide {currentSlideIndex + 1} of {slides.length}
+          </span>
+          <button
+            onClick={goToNextSlide}
+            className="p-1 rounded hover:bg-white/20 transition-colors"
+            title="Next slide"
+          >
+            <ChevronRight className="w-4 h-4 text-white/70" />
+          </button>
+        </div>
+
+        {/* Slide content */}
+        {currentSlide && (
+          <div className="p-3 space-y-2">
+            <div className="text-white font-medium">
+              {currentSlide.title || `Slide ${currentSlide.slideNumber || currentSlide.slide_number || currentSlideIndex + 1}`}
+            </div>
+            {currentSlide.content && (
+              <div className="text-white/80 text-sm">
+                {Array.isArray(currentSlide.content)
+                  ? currentSlide.content.map((item, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-white/50">•</span>
+                        <span>{item}</span>
+                      </div>
+                    ))
+                  : currentSlide.content}
+              </div>
+            )}
+            {currentSlide.slide_intent && (
+              <div className="text-white/60 text-xs italic">
+                Intent: {currentSlide.slide_intent}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Slide thumbnails */}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {slides.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrentSlideIndex(index)}
+            className={`w-6 h-6 rounded text-xs font-medium transition-colors ${
+              index === currentSlideIndex
+                ? 'bg-white text-purple-600'
+                : 'bg-white/20 text-white/70 hover:bg-white/30'
+            }`}
+          >
+            {index + 1}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Rendered view for tool_result content
  */
 function ToolResultContent({ toolName, result }: { toolName: string; result: Record<string, unknown> }) {
+  // Use specialized renderer for presentation_planner
+  const normalizedName = toolName.toLowerCase().replace(/_/g, '-');
+  if (normalizedName === 'presentation-planner') {
+    return <PresentationPlannerResultContent result={result} />;
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 text-white/90">
