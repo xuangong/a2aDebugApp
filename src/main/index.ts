@@ -2,7 +2,7 @@
  * Electron 主进程入口
  */
 
-import { app, BrowserWindow, Menu, shell } from 'electron';
+import { app, BrowserWindow, Menu, shell, nativeImage } from 'electron';
 import { join } from 'path';
 import { registerIpcHandlers } from './ipc';
 
@@ -23,6 +23,30 @@ let isQuitting = false;
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
+// 获取应用图标路径
+function getIconPath(): string {
+  const isDev = !app.isPackaged;
+  // In dev: __dirname is /path/to/project/dist, go up one level
+  // In prod: use process.resourcesPath
+  const basePath = isDev
+    ? join(__dirname, '..', 'resources')
+    : join(process.resourcesPath, 'resources');
+
+  // Use PNG for all platforms in dev mode (better compatibility)
+  // Use platform-specific formats in production
+  if (isDev) {
+    return join(basePath, 'icon-512.png');
+  }
+
+  if (isMac) {
+    return join(basePath, 'icon.icns');
+  } else if (isWindows) {
+    return join(basePath, 'icon.ico');
+  } else {
+    return join(basePath, 'icon.png');
+  }
+}
+
 function createWindow(): void {
   // 平台特定的窗口选项
   const platformOptions: Electron.BrowserWindowConstructorOptions = isMac
@@ -39,12 +63,28 @@ function createWindow(): void {
         transparent: false,
       };
 
+  // 加载图标
+  const iconPath = getIconPath();
+  let icon: Electron.NativeImage | undefined;
+  try {
+    icon = nativeImage.createFromPath(iconPath);
+    console.log('Loading icon from:', iconPath, 'isEmpty:', icon.isEmpty());
+
+    // Set dock icon on macOS
+    if (isMac && !icon.isEmpty()) {
+      app.dock.setIcon(icon);
+    }
+  } catch (err) {
+    console.warn('Failed to load app icon:', iconPath, err);
+  }
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     show: false,
+    icon,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -192,6 +232,20 @@ function createMenu(): void {
 }
 
 app.whenReady().then(() => {
+  // Set dock icon FIRST on macOS (before window creation)
+  if (isMac) {
+    const iconPath = getIconPath();
+    try {
+      const dockIcon = nativeImage.createFromPath(iconPath);
+      console.log('Setting dock icon from:', iconPath, 'isEmpty:', dockIcon.isEmpty());
+      if (!dockIcon.isEmpty()) {
+        app.dock.setIcon(dockIcon);
+      }
+    } catch (err) {
+      console.warn('Failed to set dock icon:', err);
+    }
+  }
+
   createMenu();
   registerIpcHandlers();
   createWindow();

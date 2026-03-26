@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Societas-inspired gradient - professional blue tones -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1E3A5F"/>
+      <stop offset="50%" style="stop-color:#0F2544"/>
+      <stop offset="100%" style="stop-color:#0A1929"/>
+    </linearGradient>
+
+    <!-- Agent node gradient -->
+    <linearGradient id="agentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4FC3F7"/>
+      <stop offset="100%" style="stop-color:#0288D1"/>
+    </linearGradient>
+
+    <!-- Connection line gradient -->
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4FC3F7"/>
+      <stop offset="50%" style="stop-color:#81D4FA"/>
+      <stop offset="100%" style="stop-color:#4FC3F7"/>
+    </linearGradient>
+
+    <!-- Debug accent gradient -->
+    <linearGradient id="debugGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#66BB6A"/>
+      <stop offset="100%" style="stop-color:#43A047"/>
+    </linearGradient>
+
+    <!-- Glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid pattern for tech feel -->
+  <g opacity="0.08">
+    <line x1="128" y1="32" x2="128" y2="480" stroke="white" stroke-width="1"/>
+    <line x1="256" y1="32" x2="256" y2="480" stroke="white" stroke-width="1"/>
+    <line x1="384" y1="32" x2="384" y2="480" stroke="white" stroke-width="1"/>
+    <line x1="32" y1="128" x2="480" y2="128" stroke="white" stroke-width="1"/>
+    <line x1="32" y1="256" x2="480" y2="256" stroke="white" stroke-width="1"/>
+    <line x1="32" y1="384" x2="480" y2="384" stroke="white" stroke-width="1"/>
+  </g>
+
+  <!-- Connection line between agents -->
+  <line x1="160" y1="220" x2="352" y2="220" stroke="url(#lineGrad)" stroke-width="6" stroke-linecap="round" filter="url(#glow)"/>
+
+  <!-- Bidirectional arrows on connection -->
+  <g stroke="url(#lineGrad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#glow)">
+    <!-- Right arrow -->
+    <path d="M 300 205 L 320 220 L 300 235"/>
+    <!-- Left arrow -->
+    <path d="M 212 205 L 192 220 L 212 235"/>
+  </g>
+
+  <!-- Left Agent circle -->
+  <circle cx="140" cy="220" r="50" fill="url(#agentGrad)" filter="url(#glow)"/>
+  <text x="140" y="230" font-family="SF Pro Display, -apple-system, system-ui, sans-serif" font-size="36" font-weight="700" fill="white" text-anchor="middle">A</text>
+
+  <!-- Right Agent circle -->
+  <circle cx="372" cy="220" r="50" fill="url(#agentGrad)" filter="url(#glow)"/>
+  <text x="372" y="230" font-family="SF Pro Display, -apple-system, system-ui, sans-serif" font-size="36" font-weight="700" fill="white" text-anchor="middle">A</text>
+
+  <!-- Debug Console Panel at bottom -->
+  <rect x="100" y="310" width="312" height="120" rx="12" ry="12" fill="#0D1B2A" stroke="#4FC3F7" stroke-width="2"/>
+
+  <!-- Console header bar -->
+  <rect x="100" y="310" width="312" height="28" rx="12" ry="12" fill="#1B2838"/>
+  <rect x="100" y="326" width="312" height="12" fill="#1B2838"/>
+
+  <!-- Traffic lights -->
+  <circle cx="120" cy="324" r="6" fill="#FF5F56"/>
+  <circle cx="140" cy="324" r="6" fill="#FFBD2E"/>
+  <circle cx="160" cy="324" r="6" fill="#27CA40"/>
+
+  <!-- Console title -->
+  <text x="256" y="328" font-family="SF Mono, Monaco, monospace" font-size="12" fill="#81D4FA" text-anchor="middle" opacity="0.8">A2A Debug</text>
+
+  <!-- Console content - debug output -->
+  <g font-family="SF Mono, Monaco, monospace" font-size="13" fill="#4FC3F7">
+    <text x="115" y="362" fill="#66BB6A">$</text>
+    <text x="130" y="362" fill="#81D4FA">message/stream</text>
+    <text x="260" y="362" fill="#43A047">200 OK</text>
+
+    <text x="115" y="382" fill="#66BB6A">$</text>
+    <text x="130" y="382" fill="#FFB74D">TaskStatusUpdate</text>
+
+    <text x="115" y="402" fill="#66BB6A">$</text>
+    <text x="130" y="402" fill="#81D4FA">artifacts</text>
+    <text x="210" y="402" fill="#4FC3F7">[3]</text>
+    <text x="240" y="402" fill="#43A047">streaming...</text>
+  </g>
+
+  <!-- Societas branding - subtle S watermark -->
+  <text x="440" y="460" font-family="SF Pro Display, -apple-system, system-ui, sans-serif" font-size="48" font-weight="800" fill="white" opacity="0.15" text-anchor="end">S</text>
+</svg>

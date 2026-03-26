@@ -229,6 +229,9 @@ export function registerIpcHandlers(): void {
   // ===== Agent Card =====
 
   ipcMain.handle(IPC_CHANNELS.A2A_GET_AGENT_CARD, async (_, { endpoint, auth }) => {
+    console.log('[IPC Debug] A2A_GET_AGENT_CARD called');
+    console.log('[IPC Debug] endpoint:', endpoint);
+    console.log('[IPC Debug] auth:', auth ? { bearerToken: auth.bearerToken ? `${auth.bearerToken.substring(0, 20)}...` : 'NOT SET' } : 'NO AUTH');
     const client = getA2AClient(endpoint, auth);
     return client.getAgentCard();
   });
