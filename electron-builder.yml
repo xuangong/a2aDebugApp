@@ -26,9 +26,13 @@ files:
   - dist/**/*
   - package.json
 
+# 图标配置 (跨平台)
+icon: resources/icon
+
 # macOS 配置
 mac:
   category: public.app-category.developer-tools
+  icon: resources/icon.icns
   target:
     - target: dmg
       arch:
@@ -50,6 +54,7 @@ dmg:
 
 # Windows 配置
 win:
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch:
