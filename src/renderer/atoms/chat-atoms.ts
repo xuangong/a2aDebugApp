@@ -328,6 +328,8 @@ export interface SelectedToolCall {
     output: unknown;
   };
   streaming?: boolean;
+  /** Raw SSE chunks relevant to this tool call (for debugging streaming assembly) */
+  rawChunks?: unknown[];
 }
 
 export const selectedToolCallMapAtom = atom<Map<string, SelectedToolCall | null>>(new Map());

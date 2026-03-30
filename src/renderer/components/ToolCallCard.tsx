@@ -68,6 +68,7 @@ function getToolIcon(toolName: string | null) {
     'mobileapp-clarify': Smartphone,
     'presentation-planner': Presentation,
     'web-search': Search,
+    'search-images': Search,
     'enterprise-search': Search,
     'create-webapp': Monitor,
     'create-mobileapp': Smartphone,
@@ -80,6 +81,9 @@ function getToolIcon(toolName: string | null) {
     'git-status': GitBranch,
     'get-current-datetime': Clock,
     'get-financial-data': TrendingUp,
+    'load-skill': Loader2,
+    'create-batch-slides': Presentation,
+    'content-review-batch': CheckCircle,
   };
 
   return (toolName && iconMap[toolName]) || Globe;
@@ -705,6 +709,15 @@ export function TaskClarifyCard({ xmlCall, onSubmit, toolResult }: TaskClarifyCa
                         ))}
                       </select>
                     )}
+
+                    {/* Fallback for unknown types without options */}
+                    {question.type === 'option' &&
+                      !['select', 'radio', 'checkbox', 'multiselect', 'theme', 'word_theme', 'presentation_theme', 'excel_visualization_theme'].includes(question.input_type || '') &&
+                      !question.options && (
+                      <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                        Unsupported input type: {question.input_type || 'unknown'}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -940,13 +953,15 @@ interface NativeToolCallCardProps {
   toolResult?: ToolResultData;
   /** Whether this tool call is still streaming */
   streaming?: boolean;
+  /** Raw SSE chunks relevant to this tool call */
+  rawChunks?: unknown[];
 }
 
 /**
  * Native Tool Call Card - renders OpenAI-format tool calls from DataPart
  * Uses button style to open detail panel (aligned with main frontend)
  */
-export function NativeToolCallCard({ toolCall, toolResult, streaming = false }: NativeToolCallCardProps) {
+export function NativeToolCallCard({ toolCall, toolResult, streaming = false, rawChunks }: NativeToolCallCardProps) {
   const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
   const setSidePanelTab = useSetAtom(sidePanelTabAtom);
 
@@ -978,10 +993,11 @@ export function NativeToolCallCard({ toolCall, toolResult, streaming = false }: 
         output: toolResult.result,
       } : undefined,
       streaming,
+      rawChunks,
     };
     setSelectedToolCall(selectedTool);
     setSidePanelTab('tool');
-  }, [toolCall, toolName, args, toolResult, streaming, setSelectedToolCall, setSidePanelTab]);
+  }, [toolCall, toolName, args, toolResult, streaming, rawChunks, setSelectedToolCall, setSidePanelTab]);
 
   return (
     <button
@@ -1020,7 +1036,7 @@ export function NativeToolCallCard({ toolCall, toolResult, streaming = false }: 
 /**
  * Native Complete Card - for native tool call "complete" (INLINE, always visible)
  */
-export function NativeCompleteCard({ toolCall, toolResult, streaming = false }: NativeToolCallCardProps) {
+export function NativeCompleteCard({ toolCall, toolResult, streaming = false, rawChunks }: NativeToolCallCardProps) {
   const args = parseToolArguments(toolCall);
   const message = args.message as string || '';
   const attachments = args.attachments as string || '';
@@ -1063,9 +1079,9 @@ export function NativeCompleteCard({ toolCall, toolResult, streaming = false }: 
 /**
  * Native Ask Card - for native tool call "ask" (INLINE, always visible)
  */
-export function NativeAskCard({ toolCall, streaming = false }: NativeToolCallCardProps) {
+export function NativeAskCard({ toolCall, streaming = false, rawChunks }: NativeToolCallCardProps) {
   const args = parseToolArguments(toolCall);
-  const question = args.question as string || args.message as string || '';
+  const question = args.text as string || args.question as string || args.message as string || '';
   const hasContent = !!question;
 
   return (
@@ -1098,7 +1114,7 @@ export function NativeAskCard({ toolCall, streaming = false }: NativeToolCallCar
  * Native Task Clarify Card - for native tool call "task_clarify" (INLINE form)
  * Renders the same questionnaire form as TaskClarifyCard but from native tool call arguments
  */
-export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streaming = false }: NativeToolCallCardProps & {
+export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streaming = false, rawChunks }: NativeToolCallCardProps & {
   onSubmit?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }) {
   const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
@@ -1137,10 +1153,11 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
         output: toolResult.result,
       } : undefined,
       streaming,
+      rawChunks,
     };
     setSelectedToolCall(selectedTool);
     setSidePanelTab('tool');
-  }, [toolCall, args, toolResult, streaming, setSelectedToolCall, setSidePanelTab]);
+  }, [toolCall, args, toolResult, streaming, rawChunks, setSelectedToolCall, setSidePanelTab]);
 
   // Initialize form default values
   useEffect(() => {
@@ -1367,6 +1384,15 @@ export function NativeTaskClarifyCard({ toolCall, toolResult, onSubmit, streamin
                     disabled={isSubmitted}
                   />
                 )}
+
+                {/* Fallback for unknown types without options */}
+                {question.type === 'option' &&
+                  !['select', 'radio', 'checkbox', 'multiselect', 'theme', 'word_theme', 'presentation_theme', 'excel_visualization_theme'].includes(question.input_type || '') &&
+                  !question.options && (
+                  <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500 italic border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                    Unsupported input type: {question.input_type || 'unknown'}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -1451,7 +1477,7 @@ interface PresentationPlan {
  * Native Presentation Planner Card - displays slide outline with confirm/edit capability
  * Aligned with main frontend's PresentationPlannerCard
  */
-export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, streaming = false }: NativeToolCallCardProps & {
+export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, streaming = false, rawChunks }: NativeToolCallCardProps & {
   onSubmit?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }) {
   const setSelectedToolCall = useSetAtom(selectedToolCallAtom);
@@ -1494,10 +1520,11 @@ export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, 
         output: toolResult.result,
       } : undefined,
       streaming,
+      rawChunks,
     };
     setSelectedToolCall(selectedTool);
     setSidePanelTab('tool');
-  }, [toolCall, args, toolResult, streaming, setSelectedToolCall, setSidePanelTab]);
+  }, [toolCall, args, toolResult, streaming, rawChunks, setSelectedToolCall, setSidePanelTab]);
 
   // Handle confirm plan
   const handleConfirm = async () => {
@@ -1541,8 +1568,55 @@ export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, 
     setCurrentSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : 0));
   };
 
-  // If no valid plan or still streaming with no slides
-  if (!plan || (slides.length === 0 && !streaming)) {
+  // Check if arguments are still being accumulated (streaming and incomplete JSON)
+  const rawArgs = toolCall.function?.arguments;
+  const hasPartialArgs = typeof rawArgs === 'string' && rawArgs.length > 0 && !plan;
+  const isStillAccumulating = streaming && (hasPartialArgs || !rawArgs || rawArgs === '');
+
+  // If streaming and still accumulating arguments, show loading state with progress
+  if (isStillAccumulating) {
+    // Try to extract partial title from incomplete JSON for preview
+    let partialTitle = '';
+    if (typeof rawArgs === 'string' && rawArgs.length > 20) {
+      const titleMatch = rawArgs.match(/"title"\s*:\s*"([^"]*)/);
+      if (titleMatch) {
+        partialTitle = titleMatch[1];
+      }
+    }
+
+    return (
+      <div className="my-3 rounded-xl border bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 bg-purple-100/50 dark:bg-purple-900/30">
+          <Presentation className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+          <span className="font-medium text-purple-700 dark:text-purple-300">Presentation Plan</span>
+          <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            正在规划幻灯片...
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={handleShowInPanel}
+            className="p-1 rounded hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors"
+            title="View in side panel"
+          >
+            <ExternalLink className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+          </button>
+        </div>
+        {/* Show partial title if available */}
+        {partialTitle && (
+          <div className="px-4 py-3 border-t border-purple-200 dark:border-purple-700">
+            <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
+              <span className="animate-pulse">📝</span>
+              <span className="truncate">{partialTitle}...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // If no valid plan and not streaming, show empty state
+  if (!plan || slides.length === 0) {
     return (
       <div className="my-3 rounded-xl border bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 bg-purple-100/50 dark:bg-purple-900/30">

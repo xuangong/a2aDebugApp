@@ -3,7 +3,7 @@
  * Apple Design System - Displays detailed information about the selected tool call
  */
 
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import {
   FileText,
@@ -21,6 +21,9 @@ import {
   Loader2,
   Code,
   FileJson,
+  Layers,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { selectedToolCallAtom } from '../../atoms/chat-atoms';
 
@@ -116,7 +119,7 @@ export function ToolDetailPanel() {
         {/* Content Section (for XML tools) */}
         {selectedTool.content && (
           <Section title="Content" icon={<FileText className="w-4 h-4" />}>
-            <pre className="text-apple-xs bg-apple-gray-100 dark:bg-[#2C2C2E] text-apple-gray-800 dark:text-apple-gray-200 p-3 rounded-apple overflow-x-auto max-h-64 whitespace-pre-wrap break-words">
+            <pre className="text-apple-xs bg-apple-gray-100 dark:bg-[#2C2C2E] text-apple-gray-800 dark:text-apple-gray-200 p-3 rounded-apple overflow-x-auto max-h-[60vh] whitespace-pre-wrap break-words">
               {selectedTool.content}
             </pre>
           </Section>
@@ -125,7 +128,7 @@ export function ToolDetailPanel() {
         {/* Raw XML Section (for XML tools) */}
         {selectedTool.rawXml && (
           <Section title="Raw XML" icon={<Code className="w-4 h-4" />}>
-            <pre className="text-apple-xs bg-apple-gray-100 dark:bg-[#1C1C1E] text-apple-gray-800 dark:text-apple-gray-200 p-3 rounded-apple overflow-x-auto max-h-64 whitespace-pre-wrap break-words font-mono">
+            <pre className="text-apple-xs bg-apple-gray-100 dark:bg-[#1C1C1E] text-apple-gray-800 dark:text-apple-gray-200 p-3 rounded-apple overflow-x-auto max-h-[60vh] whitespace-pre-wrap break-words font-mono">
               {selectedTool.rawXml}
             </pre>
           </Section>
@@ -149,7 +152,7 @@ export function ToolDetailPanel() {
                 {selectedTool.result.success ? 'Success' : 'Failed'}
               </div>
               {selectedTool.result.output !== undefined && (
-                <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#2C2C2E] p-3 rounded-apple overflow-x-auto max-h-64 whitespace-pre-wrap break-words">
+                <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#2C2C2E] p-3 rounded-apple overflow-x-auto max-h-[70vh] whitespace-pre-wrap break-words">
                   {typeof selectedTool.result.output === 'string'
                     ? selectedTool.result.output
                     : JSON.stringify(selectedTool.result.output, null, 2)
@@ -158,6 +161,11 @@ export function ToolDetailPanel() {
               )}
             </div>
           </Section>
+        )}
+
+        {/* Raw Chunks Section */}
+        {selectedTool.rawChunks && selectedTool.rawChunks.length > 0 && (
+          <RawChunksSection chunks={selectedTool.rawChunks} />
         )}
       </div>
     </div>
@@ -187,10 +195,6 @@ function ArgumentValue({ value }: { value: unknown }) {
     if (value === null) return 'null';
     if (value === undefined) return 'undefined';
     if (typeof value === 'string') {
-      // Truncate long strings for display
-      if (value.length > 500) {
-        return value.slice(0, 500) + '...';
-      }
       return value;
     }
     if (typeof value === 'boolean' || typeof value === 'number') {
@@ -203,7 +207,7 @@ function ArgumentValue({ value }: { value: unknown }) {
 
   if (isMultiline) {
     return (
-      <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#2C2C2E] p-2 rounded-apple overflow-x-auto max-h-48 whitespace-pre-wrap break-words">
+      <pre className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#2C2C2E] p-2 rounded-apple overflow-x-auto max-h-[60vh] whitespace-pre-wrap break-words">
         {formattedValue}
       </pre>
     );
@@ -213,5 +217,67 @@ function ArgumentValue({ value }: { value: unknown }) {
     <div className="text-apple-xs text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#2C2C2E] px-2 py-1 rounded-apple-sm break-words">
       {formattedValue}
     </div>
+  );
+}
+
+/** Collapsible Raw Chunks section showing streaming SSE fragments for a tool call */
+function RawChunksSection({ chunks }: { chunks: unknown[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set());
+
+  const toggleChunk = (index: number) => {
+    setExpandedChunks(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  return (
+    <Section title={`Raw Chunks (${chunks.length})`} icon={<Layers className="w-4 h-4" />}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-apple-xs text-apple-blue hover:underline"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {expanded ? 'Collapse all' : 'Show streaming chunks'}
+      </button>
+      {expanded && (
+        <div className="space-y-1 mt-2">
+          {chunks.map((chunk, i) => {
+            const c = chunk as Record<string, unknown>;
+            const kind = (c.kind as string) || '?';
+            const isOpen = expandedChunks.has(i);
+            // Extract a brief summary
+            let summary = kind;
+            if (kind === 'artifact-update') {
+              const artifact = c.artifact as Record<string, unknown> | undefined;
+              const append = c.append ? ' append' : '';
+              const lastChunk = c.lastChunk ? ' LAST' : '';
+              summary = `artifact-update${append}${lastChunk}`;
+              if (artifact?.name) summary += ` [${artifact.name}]`;
+            }
+            return (
+              <div key={i} className="border border-apple-gray-200 dark:border-[#38383A] rounded-apple-sm overflow-hidden">
+                <button
+                  onClick={() => toggleChunk(i)}
+                  className="w-full flex items-center gap-2 px-2 py-1 text-apple-xs text-left hover:bg-apple-gray-100 dark:hover:bg-[#2C2C2E]"
+                >
+                  {isOpen ? <ChevronDown className="w-3 h-3 flex-shrink-0" /> : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
+                  <span className="text-apple-gray-500 font-mono">#{i}</span>
+                  <span className="text-apple-gray-700 dark:text-apple-gray-300 truncate">{summary}</span>
+                </button>
+                {isOpen && (
+                  <pre className="text-[10px] text-apple-gray-800 dark:text-apple-gray-200 bg-apple-gray-100 dark:bg-[#1C1C1E] p-2 overflow-x-auto max-h-[40vh] whitespace-pre-wrap break-words font-mono border-t border-apple-gray-200 dark:border-[#38383A]">
+                    {JSON.stringify(chunk, null, 2)}
+                  </pre>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
   );
 }

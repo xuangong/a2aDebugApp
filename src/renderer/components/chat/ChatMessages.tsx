@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useMemo } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
-import { messagesAtom, streamingAtom, streamingContentAtom, streamingToolCallsAtom, streamingToolResultsAtom, viewModeAtom, selectedMessageIdAtom, chatSearchQueryAtom } from '../../atoms/chat-atoms';
+import { messagesAtom, streamingAtom, streamingContentAtom, streamingToolCallsAtom, streamingToolResultsAtom, streamingChunksAtom, viewModeAtom, selectedMessageIdAtom, chatSearchQueryAtom } from '../../atoms/chat-atoms';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { StreamingMessage } from './StreamingMessage';
@@ -21,6 +21,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
   const streamingContent = useAtomValue(streamingContentAtom);
   const streamingToolCalls = useAtomValue(streamingToolCallsAtom);
   const streamingToolResults = useAtomValue(streamingToolResultsAtom);
+  const streamingChunks = useAtomValue(streamingChunksAtom);
   const viewMode = useAtomValue(viewModeAtom);
   const [selectedMessageId, setSelectedMessageId] = useAtom(selectedMessageIdAtom);
   const searchQuery = useAtomValue(chatSearchQueryAtom);
@@ -108,6 +109,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
             viewMode={viewMode}
             streamingToolCalls={streamingToolCalls}
             streamingToolResults={streamingToolResults}
+            streamingChunks={streamingChunks}
             onSubmitTaskClarify={onSubmitTaskClarify}
           />
         )}

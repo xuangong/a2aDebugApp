@@ -7,7 +7,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check, Maximize2, Minimize2, Eye, Code, FileText } from 'lucide-react';
-import type { AssistantMessage as AssistantMessageType, A2AResult, ToolResultData, NativeToolCall } from '../../../shared/types';
+import type { AssistantMessage as AssistantMessageType, A2AResult, A2AArtifactUpdateResult, ToolResultData, NativeToolCall } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
 import {
   NativeToolCallCard,
@@ -16,7 +16,7 @@ import {
   NativeTaskClarifyCard,
   NativePresentationPlannerCard,
 } from '../ToolCallCard';
-import { extractPartsFromResult, collectToolResults, collectNativeToolCalls } from '../../../shared/types';
+import { extractPartsFromResult, collectToolResults } from '../../../shared/types';
 import { JsonView, darkStyles, defaultStyles } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
 
@@ -145,86 +145,160 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
     return map;
   }, [message.toolResults, results]);
 
-  // Collect native tool calls from DataParts and merge with message.nativeToolCalls
-  // message.nativeToolCalls contains the finalized tool calls captured before streaming reset
-  const nativeToolCalls = useMemo(() => {
-    const fromResults = collectNativeToolCalls(results);
-    const fromMessage = message.nativeToolCalls || [];
-
-    console.log('[AssistantMessage] nativeToolCalls:', {
-      fromResultsLength: fromResults.length,
-      fromMessageLength: fromMessage.length,
-      messageHasNativeToolCalls: !!message.nativeToolCalls,
-    });
-
-    // If we have tool calls from results, prefer those (more complete data)
-    // Otherwise use the ones saved in the message (finalized from streaming)
-    if (fromResults.length > 0) {
-      return fromResults;
-    }
-    return fromMessage;
-  }, [results, message.nativeToolCalls]);
-
-  // Extract text content from TextParts
-  const textFromParts = useMemo(() => {
-    const texts: string[] = [];
-    for (const result of results) {
-      const parts = extractPartsFromResult(result);
-      for (const part of parts) {
-        if (part.kind === 'text' && 'text' in part) {
-          texts.push(part.text);
+  // Build a map from tool call ID to the complete tool call data from nativeToolCalls
+  const nativeToolCallsMap = useMemo(() => {
+    const map = new Map<string, NativeToolCall>();
+    if (message.nativeToolCalls) {
+      for (const tc of message.nativeToolCalls) {
+        if (tc.id) {
+          map.set(tc.id, tc);
         }
       }
     }
-    return texts.join('');
-  }, [results]);
+    return map;
+  }, [message.nativeToolCalls]);
 
-  // Get tool result for native tool call
-  const getNativeToolResult = (tc: NativeToolCall): ToolResultData | undefined => {
-    return toolResultsMap.get(tc.id);
-  };
+  // Build interleaved content: text and tool_calls in their original order
+  // Adjacent text parts are accumulated into one paragraph, flushed when tool_call appears
+  const interleavedElements = useMemo(() => {
+    const elements: React.ReactNode[] = [];
+    const seenTexts = new Set<string>();
+    const seenToolCallIds = new Set<string>();
+    let pendingTexts: string[] = [];
+    let idx = 0;
 
-  // Render native tool call card
-  const renderNativeToolCard = (tc: NativeToolCall, index: number) => {
-    const toolResult = getNativeToolResult(tc);
-    const key = `native-${tc.id}-${index}`;
-    const normalizedName = normalizeToolName(tc.function?.name);
+    // Filter raw chunks relevant to a specific tool_call_id
+    const getChunksForToolCall = (toolCallId: string): unknown[] => {
+      if (!toolCallId) return [];
+      // Track artifact IDs that contain this tool call
+      const relevantArtifactIds = new Set<string>();
+      const chunks: unknown[] = [];
 
-    if (normalizedName === 'complete') {
-      return <NativeCompleteCard key={key} toolCall={tc} toolResult={toolResult} />;
-    } else if (normalizedName === 'ask') {
-      return <NativeAskCard key={key} toolCall={tc} toolResult={toolResult} />;
-    } else if (normalizedName === 'task-clarify') {
-      return <NativeTaskClarifyCard key={key} toolCall={tc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} />;
-    } else if (normalizedName === 'presentation-planner') {
-      return <NativePresentationPlannerCard key={key} toolCall={tc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} />;
-    } else {
-      return <NativeToolCallCard key={key} toolCall={tc} toolResult={toolResult} />;
+      for (const result of results) {
+        // Include artifact-update chunks that contain this tool_call_id
+        if (result.kind === 'artifact-update') {
+          const artifact = (result as A2AArtifactUpdateResult).artifact;
+          if (artifact.name === 'tool_calls') {
+            // Check if any part has a matching tool_call_id
+            let isRelevant = relevantArtifactIds.has(artifact.artifactId);
+            if (!isRelevant) {
+              for (const p of artifact.parts) {
+                if (p.kind === 'data' && 'data' in p) {
+                  const tcs = (p.data as Record<string, unknown>).tool_calls;
+                  if (Array.isArray(tcs) && tcs.some((t: NativeToolCall) => t.id === toolCallId)) {
+                    isRelevant = true;
+                    relevantArtifactIds.add(artifact.artifactId);
+                    break;
+                  }
+                }
+              }
+            }
+            if (isRelevant) {
+              chunks.push(result);
+            }
+          }
+          // Include tool_results for this tool call
+          if (artifact.name === 'tool_results') {
+            for (const p of artifact.parts) {
+              if (p.kind === 'data' && 'data' in p) {
+                const trs = (p.data as Record<string, unknown>).tool_results;
+                if (Array.isArray(trs) && trs.some((tr: { tool_call_id?: string }) => tr.tool_call_id === toolCallId)) {
+                  chunks.push(result);
+                }
+              }
+            }
+          }
+        }
+      }
+      return chunks;
+    };
+
+    const flushText = () => {
+      if (pendingTexts.length > 0) {
+        const combined = pendingTexts.join('');
+        if (combined.trim()) {
+          elements.push(<MarkdownContent key={`text-${idx++}`} content={combined} />);
+        }
+        pendingTexts = [];
+      }
+    };
+
+    const renderToolCard = (tc: NativeToolCall) => {
+      // IMPORTANT: Use the complete tool call data from nativeToolCalls if available
+      // DataPart tool_calls may have incomplete arguments from streaming
+      const completeTc = nativeToolCallsMap.get(tc.id) || tc;
+      const toolResult = toolResultsMap.get(tc.id);
+      const key = `tc-${idx++}-${tc.id}`;
+      const normalizedName = normalizeToolName(completeTc.function?.name);
+      const rawChunks = getChunksForToolCall(tc.id);
+
+      if (normalizedName === 'complete') {
+        return <NativeCompleteCard key={key} toolCall={completeTc} toolResult={toolResult} rawChunks={rawChunks} />;
+      } else if (normalizedName === 'ask') {
+        return <NativeAskCard key={key} toolCall={completeTc} toolResult={toolResult} rawChunks={rawChunks} />;
+      } else if (normalizedName === 'task-clarify') {
+        return <NativeTaskClarifyCard key={key} toolCall={completeTc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} rawChunks={rawChunks} />;
+      } else if (normalizedName === 'presentation-planner') {
+        return <NativePresentationPlannerCard key={key} toolCall={completeTc} toolResult={toolResult} onSubmit={onSubmitTaskClarify} rawChunks={rawChunks} />;
+      } else {
+        return <NativeToolCallCard key={key} toolCall={completeTc} toolResult={toolResult} rawChunks={rawChunks} />;
+      }
+    };
+
+    for (let resultIdx = 0; resultIdx < results.length; resultIdx++) {
+      const result = results[resultIdx];
+      const parts = extractPartsFromResult(result);
+
+      for (const part of parts) {
+        if (part.kind === 'text' && 'text' in part && part.text.trim()) {
+          // Use result index + part text as dedupe key to allow same text in different chunks
+          // This prevents loss of repeated characters/words across different SSE events
+          const dedupeKey = `${resultIdx}-${part.text}`;
+          if (!seenTexts.has(dedupeKey)) {
+            seenTexts.add(dedupeKey);
+            pendingTexts.push(part.text);
+          }
+        } else if (part.kind === 'data' && 'data' in part) {
+          const data = part.data as Record<string, unknown>;
+          const toolCalls = data?.tool_calls;
+          if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+            flushText();
+            for (const tc of toolCalls as NativeToolCall[]) {
+              // Skip streaming chunks with no id - these are incremental argument fragments
+              if (!tc.id) continue;
+              if (!seenToolCallIds.has(tc.id)) {
+                seenToolCallIds.add(tc.id);
+                elements.push(renderToolCard(tc));
+              }
+            }
+          }
+        }
+      }
     }
-  };
 
-  // Render content with native tool calls only
-  const renderContent = () => {
-    // Use text from parts if available, otherwise fall back to message.content
-    const textContent = textFromParts || message.content;
+    flushText();
 
-    if (nativeToolCalls.length === 0) {
-      // No tool calls, just render text
-      return <MarkdownContent content={textContent} />;
+    // Always check nativeToolCalls for any tool calls not already rendered
+    if (message.nativeToolCalls && message.nativeToolCalls.length > 0) {
+      for (const tc of message.nativeToolCalls) {
+        if (tc.id && !seenToolCallIds.has(tc.id)) {
+          seenToolCallIds.add(tc.id);
+          elements.push(renderToolCard(tc));
+        }
+      }
     }
 
-    // Render text + native tool cards
-    return (
-      <>
-        {textContent && <MarkdownContent content={textContent} />}
-        {nativeToolCalls.map((tc, i) => renderNativeToolCard(tc, i))}
-      </>
-    );
-  };
+    // Fallback: if still empty, use message.content
+    if (elements.length === 0 && message.content) {
+      elements.push(<MarkdownContent key="fallback" content={message.content} />);
+    }
+
+    return elements;
+  }, [results, message.nativeToolCalls, message.content, toolResultsMap, onSubmitTaskClarify]);
 
   return (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-      {renderContent()}
+      {interleavedElements}
     </div>
   );
 }

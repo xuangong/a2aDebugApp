@@ -29,7 +29,7 @@ import {
   type ConversationStreamingState,
 } from '../../atoms/chat-atoms';
 import type { UserMessage, AssistantMessage, A2AResult, JsonRpcLogEntry, A2ARequest, A2AArtifactUpdateResult, NativeToolCall, ToolResultData, FileArtifact, Message, A2AFilePart } from '../../../shared/types';
-import { extractPartsFromResult, ToolCallAccumulator, extractContextIdFromResult, extractToolResultsFromResult, extractTaskInfoFromResult, getFileArtifactType } from '../../../shared/types';
+import { extractPartsFromResult, ToolCallAccumulator, extractContextIdFromResult, extractToolResultsFromResult, extractTaskInfoFromResult, getFileArtifactType, collectNativeToolCalls } from '../../../shared/types';
 
 // Per-conversation accumulator state
 interface ConversationAccumulators {
@@ -143,7 +143,29 @@ export function ChatInput() {
   const finalizeStreamingMessage = useCallback(async (conversationId: string) => {
     const state = getConversationStreamingState(streamingMapRef.current, conversationId);
     const acc = accumulatorsRef.current.get(conversationId);
-    const finalToolCalls = acc?.toolCalls.getAllToolCalls() || [];
+
+    // Collect tool calls from multiple sources:
+    // 1. Accumulator (from artifact-update streaming chunks)
+    // 2. Final status-update (authoritative source with complete tool calls)
+    const accumulatorToolCalls = acc?.toolCalls.getAllToolCalls() || [];
+    const statusUpdateToolCalls = collectNativeToolCalls(state.chunks);
+
+    // Merge and dedupe - prefer status-update data as it has complete arguments
+    const toolCallsById = new Map<string, NativeToolCall>();
+    // First add accumulator tool calls
+    for (const tc of accumulatorToolCalls) {
+      if (tc.id) {
+        toolCallsById.set(tc.id, tc);
+      }
+    }
+    // Then override with status-update tool calls (more complete data)
+    for (const tc of statusUpdateToolCalls) {
+      if (tc.id) {
+        toolCallsById.set(tc.id, tc);
+      }
+    }
+    const finalToolCalls = Array.from(toolCallsById.values());
+
     // Collect tool results from accumulator
     const finalToolResults = acc?.toolResults && acc.toolResults.size > 0
       ? Array.from(acc.toolResults.values())
@@ -277,20 +299,13 @@ export function ChatInput() {
 
         if (artifactName === 'tool_results') {
           const newToolResults = extractToolResultsFromResult(artifactUpdate);
-          console.log('[ChatInput] Received tool_results artifact:', {
-            artifactId: artifactUpdate.artifact.artifactId,
-            artifactName,
-            newToolResultsCount: newToolResults.length,
-            newToolResults: newToolResults.map(tr => ({ tool_call_id: tr.tool_call_id, success: tr.success })),
-          });
           for (const tr of newToolResults) {
             acc.toolResults.set(tr.tool_call_id, tr);
           }
-          console.log('[ChatInput] Updated acc.toolResults, size:', acc.toolResults.size);
           updateConversationStreaming(conversationId, () => ({
             toolResults: new Map(acc.toolResults),
           }));
-          return;
+          // Don't return - continue to add to chunks for interleaved display
         }
 
         if (artifactName === 'tool_calls') {
@@ -298,7 +313,7 @@ export function ChatInput() {
           updateConversationStreaming(conversationId, () => ({
             toolCalls: acc.toolCalls.getAllToolCalls(),
           }));
-          return;
+          // Don't return - continue to add to chunks for interleaved display
         }
 
         // Handle file artifacts from artifact-update (FilePart)
@@ -325,7 +340,7 @@ export function ChatInput() {
             }
           }
         }
-        return;
+        // Don't return - continue to add to chunks for interleaved display
       }
 
       // Handle file_artifacts from status-update DataPart (backend-provided)

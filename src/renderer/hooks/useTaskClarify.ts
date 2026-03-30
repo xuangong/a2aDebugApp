@@ -89,17 +89,11 @@ export function useTaskClarify() {
         throw new Error('toolCallId is required for native tool call format');
       }
 
-      console.log('[useTaskClarify] submitTaskClarify called with:', {
-        responses,
-        toolCallId,
-      });
-
       // Detect tool name from responses (default to task_clarify)
       const toolName = typeof responses._tool_name === 'string' ? responses._tool_name : 'task_clarify';
 
       // Format as native tool call
       const messageContent = formatNativeToolResultMessage(responses, toolCallId, toolName);
-      console.log('[useTaskClarify] messageContent:', messageContent);
 
       // Build raw request for debugging (before creating message)
       const auth = authConfig.bearerToken || authConfig.accountId ? authConfig : undefined;

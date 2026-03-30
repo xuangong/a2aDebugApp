@@ -7,7 +7,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { CheckCircle, Eye, Code, FileText, Copy, Check, Maximize2, Minimize2, Presentation, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { UserMessage as UserMessageType } from '../../../shared/types';
 import type { ViewMode } from '../../atoms/chat-atoms';
-import { JsonView, darkStyles } from 'react-json-view-lite';
+import { JsonView, darkStyles, defaultStyles } from 'react-json-view-lite';
 import 'react-json-view-lite/dist/index.css';
 
 // Custom expand function: expand all nodes by default
@@ -232,6 +232,8 @@ function RawView({ message }: { message: UserMessageType }) {
     setTimeout(() => setCopied(false), 2000);
   }, [rawData]);
 
+  const isDark = document.documentElement.classList.contains('dark');
+
   return (
     <div className="space-y-2">
       {/* Header with controls */}
@@ -263,11 +265,11 @@ function RawView({ message }: { message: UserMessageType }) {
         </div>
       </div>
       {/* JSON content */}
-      <div className={`text-[11px] bg-white/15 p-3 rounded-apple-sm overflow-auto ${isExpanded ? '' : 'max-h-96'}`}>
+      <div className={`text-[11px] p-3 rounded-apple-sm overflow-auto bg-white/90 dark:bg-white/15 ${isExpanded ? '' : 'max-h-96'}`}>
         <JsonView
           data={rawData}
           shouldExpandNode={expandAllNodes}
-          style={darkStyles}
+          style={isDark ? darkStyles : defaultStyles}
         />
       </div>
     </div>

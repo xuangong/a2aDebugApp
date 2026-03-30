@@ -418,7 +418,7 @@ export function Sidebar({ isDark, onToggleTheme }: SidebarProps) {
         )}
 
         {/* Footer: Theme toggle */}
-        <div className={`p-2 border-t border-apple-gray-300/60 dark:border-[#38383A] ${sidebarExpanded ? '' : 'flex justify-center'}`}>
+        <div className={`p-3 ${sidebarExpanded ? '' : 'flex justify-center'}`}>
           <button
             onClick={onToggleTheme}
             className={`btn-apple-icon ${sidebarExpanded ? 'w-full justify-start px-3 gap-2' : ''}`}
