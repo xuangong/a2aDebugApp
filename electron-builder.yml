@@ -56,13 +56,10 @@ dmg:
 win:
   icon: resources/icon.ico
   target:
-    - target: nsis
+    - target: portable
       arch:
         - x64
 
-# NSIS installer config
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  createDesktopShortcut: true
-  createStartMenuShortcut: true
+# Portable config
+portable:
+  artifactName: ${productName}-${version}-portable.exe
