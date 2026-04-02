@@ -1,14 +1,14 @@
 /**
- * Task-clarify 提交 hook
- * 处理 task-clarify 表单提交并发送到 A2A 后端
+ * Task-clarify submission hook
+ * Handles task-clarify form submission and sends to A2A backend
  *
- * 使用 Native tool call 格式:
+ * Uses Native tool call format:
  * {"tool_result": {"tool_name": "task_clarify", "tool_call_id": "xxx", "result": {...}}}
  *
- * taskId 续传机制:
- * - 当 task 状态变为 input-required 时，IPC 层会自动保存 taskId 到 conversation.currentTaskId
- * - 提交 tool result 时，会自动使用保存的 taskId
- * - 这确保了响应会被发送到同一个 task，而不是创建新 task
+ * taskId continuation mechanism:
+ * - When task state becomes input-required, IPC layer auto-saves taskId to conversation.currentTaskId
+ * - When submitting tool result, the saved taskId is automatically used
+ * - This ensures the response is sent to the same task, not creating a new one
  */
 
 import { useCallback } from 'react';
@@ -29,8 +29,8 @@ import {
 import type { UserMessage, A2ARequest, JsonRpcLogEntry } from '../../shared/types';
 
 /**
- * 格式化 tool result 响应为 native tool call JSON 格式
- * 支持 task_clarify, presentation_planner 等多种 client tools
+ * Format tool result response as native tool call JSON
+ * Supports task_clarify, presentation_planner, and other client tools
  */
 function formatNativeToolResultMessage(
   responses: Record<string, string | string[]>,
@@ -49,7 +49,7 @@ function formatNativeToolResultMessage(
 }
 
 /**
- * 提供 task-clarify 表单提交功能的 hook
+ * Hook providing task-clarify form submission functionality
  */
 export function useTaskClarify() {
   const currentConversation = useAtomValue(currentConversationAtom);
@@ -63,7 +63,7 @@ export function useTaskClarify() {
   const setDebugLogs = useSetAtom(debugLogsAtom);
   const setCurrentStreamingMessageId = useSetAtom(currentStreamingMessageIdAtom);
 
-  // 添加调试日志（同时保存到文件）
+  // Add debug log (also persisted to file)
   const addDebugLog = useCallback((entry: Omit<JsonRpcLogEntry, 'id' | 'timestamp'>) => {
     const logEntry: JsonRpcLogEntry = {
       id: uuidv4(),
@@ -72,7 +72,7 @@ export function useTaskClarify() {
     };
     setDebugLogs((prev) => [...prev, logEntry]);
 
-    // 异步保存到文件
+    // Persist to file asynchronously
     if (currentConversation) {
       window.electronAPI.saveDebugLog(currentConversation.id, logEntry).catch(console.error);
     }
@@ -116,7 +116,7 @@ export function useTaskClarify() {
         id: `req-${Date.now()}`,
       };
 
-      // 创建用户消息（工具结果）with rawRequest for debugging
+      // Create user message (tool result) with rawRequest for debugging
       const userMessage: UserMessage = {
         id: uuidv4(),
         role: 'user',
@@ -125,20 +125,20 @@ export function useTaskClarify() {
         createdAt: Date.now(),
       };
 
-      // 添加用户消息
+      // Add user message
       setMessages((prev) => [...prev, userMessage]);
       await window.electronAPI.saveMessage(currentConversation.id, userMessage);
 
-      // 开始流式响应
+      // Start streaming response
       setStreaming(true);
       setStreamingContent('');
       setStreamingChunks([]);
 
-      // 设置当前流式消息 ID（用于关联后续 SSE 事件）
+      // Set current streaming message ID (for correlating subsequent SSE events)
       setCurrentStreamingMessageId(userMessage.id);
 
       try {
-        // 记录请求到调试日志
+        // Log request to debug logs
         addDebugLog({
           direction: 'request',
           messageId: userMessage.id,

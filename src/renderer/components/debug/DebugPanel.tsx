@@ -1,6 +1,6 @@
 /**
- * 调试面板组件
- * 显示 JSON-RPC 交互过程
+ * Debug Panel Component
+ * Displays JSON-RPC interaction flow
  */
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
@@ -91,23 +91,23 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
     return count;
   }, [messages, streamingFileArtifacts]);
 
-  // 宽度调整状态
+  // Width resize state
   const [panelWidth, setPanelWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  // 筛选状态（按类型）
+  // Filter state (by type)
   const [filterType, setFilterType] = useState<'all' | 'request' | 'response' | 'sse' | 'tool'>('all');
 
   const handleClear = useCallback(() => {
     setDebugLogs([]);
-    // 同时清除持久化的日志
+    // Also clear persisted logs
     if (currentConversation) {
       window.electronAPI.clearDebugLogs(currentConversation.id).catch(console.error);
     }
   }, [setDebugLogs, currentConversation]);
 
-  // 过滤日志（按类型）
+  // Filter logs (by type)
   const filteredLogs = useMemo(() => {
     if (filterType === 'all') return debugLogs;
     return debugLogs.filter((entry) => {
@@ -115,7 +115,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
       if (filterType === 'response') return entry.direction === 'response';
       if (filterType === 'sse') return entry.direction === 'sse-event';
       if (filterType === 'tool') {
-        // 检测是否包含工具结果
+        // Check if contains tool results
         if (entry.direction !== 'sse-event' || !entry.sseEvent?.data) return false;
         const data = entry.sseEvent.data as A2AResult;
         if (data.kind === 'status-update' && data.status?.message?.parts) {
@@ -134,7 +134,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
     });
   }, [debugLogs, filterType]);
 
-  // 拖拽调整宽度
+  // Drag to resize width
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
@@ -149,7 +149,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!resizeRef.current) return;
-      // 向左拖动增加宽度，向右拖动减少宽度
+      // Dragging left increases width, dragging right decreases width
       const delta = resizeRef.current.startX - e.clientX;
       const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, resizeRef.current.startWidth + delta));
       setPanelWidth(newWidth);
@@ -169,11 +169,11 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
     };
   }, [isResizing]);
 
-  // 当选中消息变化时，滚动到第一条高亮日志
+  // Scroll to first highlighted log when selected message changes
   useEffect(() => {
     if (!selectedMessageId || !listRef.current) return;
 
-    // 找到第一条匹配的日志并滚动到它（同时检查 messageId 和 responseMessageId）
+    // Find the first matching log and scroll to it (checks both messageId and responseMessageId)
     const firstMatchingLog = debugLogs.find(
       log => log.messageId === selectedMessageId || log.responseMessageId === selectedMessageId
     );
@@ -188,7 +188,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
   if (!expanded) {
     return (
       <div className="w-10 border-l border-apple-gray-200 dark:border-[#38383A] bg-apple-gray-50 dark:bg-[#1C1C1E] flex flex-col">
-        {/* 标题栏拖拽区域（与主窗口对齐） */}
+        {/* Title bar drag area (aligned with main window) */}
         <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-[#1C1C1E]" />
         <div className="flex-1 flex flex-col items-center py-2">
           <button
@@ -208,7 +208,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
       className="border-l border-apple-gray-200 dark:border-[#38383A] bg-apple-gray-50 dark:bg-[#1C1C1E] flex flex-col relative"
       style={{ width: panelWidth }}
     >
-      {/* 左侧拖拽手柄 */}
+      {/* Left drag handle */}
       <div
         className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-apple-blue transition-colors z-10 ${
           isResizing ? 'bg-apple-blue' : 'bg-transparent hover:bg-apple-blue/50'
@@ -221,10 +221,10 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
         </div>
       </div>
 
-      {/* 标题栏拖拽区域（与主窗口对齐） */}
+      {/* Title bar drag area (aligned with main window) */}
       <div className="h-11 titlebar-drag flex-shrink-0 bg-white dark:bg-[#1C1C1E]" />
 
-      {/* 头部 - 与 ChatHeader 内容区域对齐 */}
+      {/* Header - aligned with ChatHeader content area */}
       <div className="flex flex-col border-b border-apple-gray-200 dark:border-[#38383A]">
         {/* Tabs - Apple segmented control style */}
         <div className="flex items-center px-3 pt-2">
@@ -278,7 +278,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
               </span>
             </div>
             <div className="flex items-center gap-1">
-              {/* 类型筛选下拉框 */}
+              {/* Type filter dropdown */}
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as typeof filterType)}
@@ -319,7 +319,7 @@ export function DebugPanel({ messages: externalMessages }: DebugPanelProps) {
 
       {/* Content */}
       {activeTab === 'logs' && (
-        /* 日志列表 */
+        /* Log list */
         <div ref={listRef} className="flex-1 overflow-y-auto">
           {filteredLogs.length === 0 ? (
             <div className="flex items-center justify-center h-full text-apple-sm text-apple-gray-400 text-center px-4">
@@ -372,17 +372,17 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false); // Trunk collapsed by default
   const [copied, setCopied] = useState(false);
 
-  // 检测 SSE 事件是否包含工具结果
+  // Check if SSE event contains tool results
   const isToolResult = useMemo(() => {
     if (entry.direction !== 'sse-event' || !entry.sseEvent?.data) return false;
     const data = entry.sseEvent.data as A2AResult;
-    // 检查 status-update 中的 message.parts
+    // Check message.parts in status-update
     if (data.kind === 'status-update' && data.status?.message?.parts) {
       return data.status.message.parts.some(
         (p) => p.kind === 'data' && 'data' in p && (p.data as Record<string, unknown>)?.type === 'tool_result'
       );
     }
-    // 检查 message 中的 parts
+    // Check parts in message
     if (data.kind === 'message' && data.parts) {
       return data.parts.some(
         (p) => p.kind === 'data' && 'data' in p && (p.data as Record<string, unknown>)?.type === 'tool_result'
@@ -391,7 +391,7 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
     return false;
   }, [entry]);
 
-  // 获取工具名称（如果是工具结果）
+  // Get tool name (if it's a tool result)
   const toolName = useMemo(() => {
     if (!isToolResult || !entry.sseEvent?.data) return null;
     const data = entry.sseEvent.data as A2AResult;
@@ -403,7 +403,7 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
       if (p.kind === 'data' && 'data' in p) {
         const toolData = p.data as Record<string, unknown>;
         if (toolData?.type === 'tool_result') {
-          // 尝试多种可能的字段名
+          // Try multiple possible field names
           const name = toolData.tool_name || toolData.toolName || toolData.name;
           return (name as string) || 'tool';
         }
@@ -503,7 +503,7 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
       ref={onRefReady}
       className={`${isHighlighted ? 'bg-apple-blue/5 ring-2 ring-apple-blue ring-inset' : 'bg-white dark:bg-[#2C2C2E]'}`}
     >
-      {/* 头部 */}
+      {/* Header */}
       <div
         className={`flex items-center gap-2 px-3 py-2 cursor-pointer ${isHighlighted ? 'hover:bg-apple-blue/10' : 'hover:bg-apple-gray-100 dark:hover:bg-[#38383A]'}`}
         onClick={() => setIsExpanded(!isExpanded)}
@@ -527,7 +527,7 @@ function LogEntry({ entry, isHighlighted, onRefReady }: LogEntryProps) {
         </span>
       </div>
 
-      {/* 展开的内容 */}
+      {/* Expanded content */}
       {isExpanded && (
         <div className="px-3 pb-3">
           <div className="relative bg-apple-gray-100 dark:bg-[#1C1C1E] rounded-apple p-2 overflow-auto max-h-[500px] text-[11px]">

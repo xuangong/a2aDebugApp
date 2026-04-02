@@ -232,6 +232,9 @@
     @apply bg-apple-gray-200 text-apple-gray-900;
     @apply rounded-[18px] rounded-bl-[4px];
     @apply px-4 py-2.5;
+    @apply overflow-hidden;
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 
   .dark .apple-message-assistant {

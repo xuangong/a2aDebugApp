@@ -1,7 +1,7 @@
 /**
- * 对话管理器
+ * Conversation Manager
  *
- * 使用 JSONL 格式存储对话历史，参考 Proma 实现
+ * Stores conversation history in JSONL format, inspired by Proma implementation
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, copyFileSync } from 'fs';
@@ -70,7 +70,7 @@ export class ConversationManager {
   }
 
   /**
-   * 列出所有对话
+   * List all conversations
    */
   listConversations(): Conversation[] {
     const index = this.loadIndex();
@@ -78,8 +78,8 @@ export class ConversationManager {
   }
 
   /**
-   * 创建新对话
-   * id 就是 contextId，后端会用它作为 thread_id
+   * Create new conversation
+   * id is the contextId, backend uses it as thread_id
    */
   createConversation(title: string, endpoint: string): Conversation {
     const index = this.loadIndex();
@@ -99,27 +99,27 @@ export class ConversationManager {
     index.conversations.push(conversation);
     this.saveIndex(index);
 
-    // 创建空的消息文件
+    // Create empty messages file
     writeFileSync(this.getMessagesPath(conversation.id), '');
 
     return conversation;
   }
 
   /**
-   * 删除对话
+   * Delete conversation
    */
   deleteConversation(id: string): void {
     const index = this.loadIndex();
     index.conversations = index.conversations.filter((c) => c.id !== id);
     this.saveIndex(index);
 
-    // 删除消息文件
+    // Delete messages file
     const messagesPath = this.getMessagesPath(id);
     if (existsSync(messagesPath)) {
       unlinkSync(messagesPath);
     }
 
-    // 删除 debug logs 文件
+    // Delete debug logs file
     const debugLogsPath = this.getDebugLogsPath(id);
     if (existsSync(debugLogsPath)) {
       unlinkSync(debugLogsPath);
@@ -127,7 +127,7 @@ export class ConversationManager {
   }
 
   /**
-   * 更新对话
+   * Update conversation
    */
   updateConversation(id: string, updates: Partial<Conversation>): Conversation | null {
     const index = this.loadIndex();
@@ -142,7 +142,7 @@ export class ConversationManager {
   }
 
   /**
-   * 获取对话消息
+   * Get conversation messages
    */
   getMessages(conversationId: string): Message[] {
     const messagesPath = this.getMessagesPath(conversationId);
@@ -158,18 +158,18 @@ export class ConversationManager {
   }
 
   /**
-   * 保存消息
+   * Save message
    */
   saveMessage(conversationId: string, message: Message): void {
     const messagesPath = this.getMessagesPath(conversationId);
     appendFileSync(messagesPath, JSON.stringify(message) + '\n');
 
-    // 更新对话的 updatedAt
+    // Update conversation's updatedAt
     this.updateConversation(conversationId, {});
   }
 
   /**
-   * 更新消息（用于流式更新）
+   * Update message (for streaming updates)
    */
   updateMessage(conversationId: string, messageId: string, updates: Partial<Message>): void {
     const messages = this.getMessages(conversationId);
@@ -179,16 +179,16 @@ export class ConversationManager {
 
     Object.assign(messages[messageIndex], updates);
 
-    // 重写整个文件
+    // Rewrite the entire file
     const messagesPath = this.getMessagesPath(conversationId);
     const content = messages.map((m) => JSON.stringify(m)).join('\n') + '\n';
     writeFileSync(messagesPath, content);
   }
 
-  // ===== Debug Logs 管理 =====
+  // ===== Debug Logs Management =====
 
   /**
-   * 获取对话的 debug logs
+   * Get conversation debug logs
    */
   getDebugLogs(conversationId: string): JsonRpcLogEntry[] {
     const logsPath = this.getDebugLogsPath(conversationId);
@@ -204,7 +204,7 @@ export class ConversationManager {
   }
 
   /**
-   * 保存单条 debug log
+   * Save a single debug log
    */
   saveDebugLog(conversationId: string, log: JsonRpcLogEntry): void {
     const logsPath = this.getDebugLogsPath(conversationId);
@@ -212,7 +212,7 @@ export class ConversationManager {
   }
 
   /**
-   * 批量保存 debug logs（覆盖写入）
+   * Batch save debug logs (overwrite)
    */
   saveDebugLogs(conversationId: string, logs: JsonRpcLogEntry[]): void {
     const logsPath = this.getDebugLogsPath(conversationId);
@@ -221,17 +221,17 @@ export class ConversationManager {
   }
 
   /**
-   * 清空对话的 debug logs
+   * Clear conversation debug logs
    */
   clearDebugLogs(conversationId: string): void {
     const logsPath = this.getDebugLogsPath(conversationId);
     writeFileSync(logsPath, '');
   }
 
-  // ===== 后端录制导入 =====
+  // ===== Backend Recording Import =====
 
   /**
-   * 列出指定目录中的录制会话
+   * List recorded sessions in the specified directory
    */
   listBackendConversations(sourceDir: string): BackendConversation[] {
     const backendIndexPath = join(sourceDir, 'conversations.json');
@@ -256,7 +256,7 @@ export class ConversationManager {
   }
 
   /**
-   * 从指定目录导入录制的会话
+   * Import recorded sessions from the specified directory
    */
   importBackendConversations(sourceDir: string, conversationIds: string[]): ImportResult {
     const result: ImportResult = {
@@ -295,7 +295,7 @@ export class ConversationManager {
         }
 
         try {
-          // 复制消息文件
+          // Copy messages file
           const backendMessagesPath = join(backendConversationsDir, `${convId}.jsonl`);
           const localMessagesPath = this.getMessagesPath(convId);
           if (existsSync(backendMessagesPath)) {
@@ -304,14 +304,14 @@ export class ConversationManager {
             writeFileSync(localMessagesPath, '');
           }
 
-          // 复制调试日志文件
+          // Copy debug logs file
           const backendDebugPath = join(backendConversationsDir, `${convId}.debug.jsonl`);
           const localDebugPath = this.getDebugLogsPath(convId);
           if (existsSync(backendDebugPath)) {
             copyFileSync(backendDebugPath, localDebugPath);
           }
 
-          // 添加到本地索引，记录导入来源
+          // Add to local index, record import source
           // Note: imported conversations may have contextId from old format
           // Use contextId if available for backward compatibility, otherwise use id
           const importedConv: Conversation = {
@@ -330,7 +330,7 @@ export class ConversationManager {
         }
       }
 
-      // 保存更新后的索引
+      // Save updated index
       this.saveIndex(localIndex);
 
       if (result.errors.length > 0) {
@@ -345,7 +345,7 @@ export class ConversationManager {
   }
 
   /**
-   * 获取所有导入来源
+   * Get all import sources
    */
   listImportSources(): ImportSource[] {
     const index = this.loadIndex();
@@ -365,13 +365,13 @@ export class ConversationManager {
   }
 
   /**
-   * 卸载指定来源的所有会话
+   * Uninstall all sessions from specified source
    */
   uninstallImportSource(sourcePath: string): { success: boolean; removedCount: number } {
     const index = this.loadIndex();
     const toRemove = index.conversations.filter((c) => c.importSource === sourcePath);
 
-    // 删除文件
+    // Delete files
     for (const conv of toRemove) {
       const messagesPath = this.getMessagesPath(conv.id);
       const debugPath = this.getDebugLogsPath(conv.id);
@@ -384,7 +384,7 @@ export class ConversationManager {
       }
     }
 
-    // 更新索引
+    // Update index
     index.conversations = index.conversations.filter((c) => c.importSource !== sourcePath);
     this.saveIndex(index);
 

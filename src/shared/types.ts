@@ -732,6 +732,8 @@ export interface AppConfig {
   theme: 'light' | 'dark' | 'system';
   /** Auth configuration */
   auth?: AuthConfig;
+  /** Feature flags header value (x-fd-features), e.g. "enableA2A&enableNativeToolCall" */
+  featureFlags?: string;
 }
 
 // ===== IPC Channels =====

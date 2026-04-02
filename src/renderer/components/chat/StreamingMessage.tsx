@@ -1,6 +1,6 @@
 /**
- * 流式消息组件
- * Apple Design System - 用于实时渲染正在接收的 Agent 响应
+ * Streaming Message Component
+ * Apple Design System - Real-time rendering of incoming Agent responses
  * Native tool calls only (XML tool calls deprecated)
  * Supports interleaved text and tool_calls display
  */
@@ -52,7 +52,7 @@ export function StreamingMessage({ content, viewMode, streamingToolCalls = [], s
           ) : (
             <RawStreamingContent content={content} viewMode={viewMode} streamingToolCalls={streamingToolCalls} streamingToolResults={streamingToolResults} />
           )}
-          {/* 流式光标 - Apple style */}
+          {/* Streaming cursor - Apple style */}
           <span className="inline-flex items-center gap-1.5 text-apple-gray-400">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span className="text-apple-xs">Generating...</span>
@@ -63,7 +63,7 @@ export function StreamingMessage({ content, viewMode, streamingToolCalls = [], s
   );
 }
 
-/** Rendered 模式：按流顺序交错渲染 text 和 Native Tool Calls */
+/** Rendered mode: interleaved rendering of text and Native Tool Calls in stream order */
 function RenderedStreamingContent({ content, streamingToolCalls, streamingToolResults, streamingChunks, onSubmitTaskClarify }: {
   content: string;
   streamingToolCalls: NativeToolCall[];
@@ -198,7 +198,7 @@ function RenderedStreamingContent({ content, streamingToolCalls, streamingToolRe
   return <>{interleavedElements}</>;
 }
 
-/** Raw/Table/Content 模式：简单显示原始内容 */
+/** Raw/Table/Content mode: simple display of raw content */
 function RawStreamingContent({ content, viewMode, streamingToolCalls, streamingToolResults }: { content: string; viewMode: ViewMode; streamingToolCalls: NativeToolCall[]; streamingToolResults: Map<string, ToolResultData> }) {
   return (
     <div className="space-y-3">
@@ -284,10 +284,10 @@ function RawToolCallButton({ toolCall, streaming }: { toolCall: NativeToolCall; 
   );
 }
 
-/** Markdown 内容渲染组件 - Apple typography */
+/** Markdown content renderer - Apple typography */
 function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none
+    <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto break-words
       prose-headings:font-semibold prose-headings:text-apple-gray-900 dark:prose-headings:text-apple-gray-100
       prose-p:text-apple-gray-800 dark:prose-p:text-apple-gray-200 prose-p:leading-relaxed
       prose-a:text-apple-blue prose-a:no-underline hover:prose-a:underline

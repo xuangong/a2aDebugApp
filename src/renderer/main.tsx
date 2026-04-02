@@ -1,5 +1,5 @@
 /**
- * 渲染进程入口
+ * Renderer Process Entry
  */
 
 import React from 'react';

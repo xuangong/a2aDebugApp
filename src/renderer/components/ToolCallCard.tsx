@@ -1591,7 +1591,7 @@ export function NativePresentationPlannerCard({ toolCall, toolResult, onSubmit, 
           <span className="font-medium text-purple-700 dark:text-purple-300">Presentation Plan</span>
           <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded flex items-center gap-1">
             <Loader2 className="w-3 h-3 animate-spin" />
-            正在规划幻灯片...
+            Planning slides...
           </span>
           <div className="flex-1" />
           <button

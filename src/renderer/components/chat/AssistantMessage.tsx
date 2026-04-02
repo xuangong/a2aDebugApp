@@ -306,7 +306,7 @@ function RenderedView({ message, searchQuery, onSubmitTaskClarify }: { message: 
 /** Markdown Content Renderer - Apple typography */
 function MarkdownContent({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none
+    <div className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto break-words
       prose-headings:font-semibold prose-headings:text-apple-gray-900 dark:prose-headings:text-apple-gray-100
       prose-p:text-apple-gray-800 dark:prose-p:text-apple-gray-200 prose-p:leading-relaxed
       prose-a:text-apple-blue prose-a:no-underline hover:prose-a:underline

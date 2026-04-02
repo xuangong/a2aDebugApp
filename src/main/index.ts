@@ -1,5 +1,5 @@
 /**
- * Electron 主进程入口
+ * Electron Main Process Entry
  */
 
 import { app, BrowserWindow, Menu, shell, nativeImage } from 'electron';
@@ -19,11 +19,11 @@ process.stderr.on('error', (err) => {
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
-// 平台检测
+// Platform detection
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
 
-// 获取应用图标路径
+// Get app icon path
 function getIconPath(): string {
   const isDev = !app.isPackaged;
   // In dev: __dirname is /path/to/project/dist, go up one level
@@ -48,22 +48,22 @@ function getIconPath(): string {
 }
 
 function createWindow(): void {
-  // 平台特定的窗口选项
+  // Platform-specific window options
   const platformOptions: Electron.BrowserWindowConstructorOptions = isMac
     ? {
-        // macOS: 使用隐藏的标题栏和 vibrancy 效果
+        // macOS: Use hidden title bar with vibrancy effect
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: { x: 18, y: 18 },
         vibrancy: 'under-window',
         visualEffectState: 'active',
       }
     : {
-        // Windows/Linux: 使用 frameless 窗口 + 自定义标题栏
+        // Windows/Linux: Use frameless window + custom title bar
         frame: false,
         transparent: false,
       };
 
-  // 加载图标
+  // Load icon
   const iconPath = getIconPath();
   let icon: Electron.NativeImage | undefined;
   try {
@@ -93,7 +93,7 @@ function createWindow(): void {
     ...platformOptions,
   });
 
-  // 加载渲染进程
+  // Load renderer process
   const isDev = !app.isPackaged;
   if (isDev) {
     mainWindow.loadURL('http://localhost:5174');
@@ -102,12 +102,12 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, 'renderer', 'index.html'));
   }
 
-  // 窗口准备好后显示
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
 
-  // 拦截外部链接
+  // Intercept external links
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (isDev && url.startsWith('http://localhost:')) return;
     event.preventDefault();
@@ -123,11 +123,11 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
-  // 右键上下文菜单
+  // Right-click context menu
   mainWindow.webContents.on('context-menu', (_, params) => {
     const menuItems: Electron.MenuItemConstructorOptions[] = [];
 
-    // 如果有选中的文本，显示复制选项
+    // Show copy option if text is selected
     if (params.selectionText) {
       menuItems.push({
         label: 'Copy',
@@ -135,7 +135,7 @@ function createWindow(): void {
       });
     }
 
-    // 如果在可编辑区域，显示粘贴选项
+    // Show paste option if in editable area
     if (params.isEditable) {
       menuItems.push({
         label: 'Paste',
@@ -147,7 +147,7 @@ function createWindow(): void {
       });
     }
 
-    // 全选
+    // Select all
     menuItems.push({
       label: 'Select All',
       role: 'selectAll',
@@ -159,7 +159,7 @@ function createWindow(): void {
     }
   });
 
-  // macOS: 点击关闭按钮时隐藏窗口
+  // macOS: Hide window on close button click
   if (process.platform === 'darwin') {
     mainWindow.on('close', (event) => {
       if (!isQuitting) {

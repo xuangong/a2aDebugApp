@@ -1,18 +1,18 @@
 /**
- * 紧凑的 JSON 树形显示组件
- * 支持折叠/展开，显示紧凑
+ * Compact JSON Tree Display Component
+ * Supports collapse/expand with compact display
  */
 
 import { useState, useMemo, useCallback } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
-const INDENT_PX = 16; // 每层缩进像素
+const INDENT_PX = 16; // Pixels per indentation level
 
 interface JsonTreeProps {
   data: unknown;
-  /** 默认展开层级 */
+  /** Default expansion depth */
   defaultExpandLevel?: number;
-  /** 根节点名称 */
+  /** Root node name */
   rootName?: string;
 }
 
@@ -24,7 +24,7 @@ interface JsonNodeProps {
   isLast: boolean;
 }
 
-/** 获取值的类型标签 */
+/** Get type label for value */
 function getTypeLabel(value: unknown): string {
   if (value === null) return 'null';
   if (Array.isArray(value)) return `[${value.length}]`;
@@ -32,7 +32,7 @@ function getTypeLabel(value: unknown): string {
   return typeof value;
 }
 
-/** 获取值的颜色 */
+/** Get color for value */
 function getValueColor(value: unknown): string {
   if (value === null) return 'text-gray-500';
   if (typeof value === 'string') return 'text-green-400';
@@ -41,11 +41,11 @@ function getValueColor(value: unknown): string {
   return 'text-gray-300';
 }
 
-/** 格式化显示值 */
+/** Format display value */
 function formatValue(value: unknown): string {
   if (value === null) return 'null';
   if (typeof value === 'string') {
-    // 长字符串截断显示
+    // Truncate long strings
     if (value.length > 100) {
       return `"${value.slice(0, 100)}..."`;
     }
@@ -77,7 +77,7 @@ function JsonNode({ name, value, level, defaultExpandLevel, isLast }: JsonNodePr
   const indent = level * INDENT_PX;
 
   if (!isExpandable) {
-    // 叶子节点 - 单行显示
+    // Leaf node - single line display
     return (
       <div className="flex items-start leading-5" style={{ paddingLeft: indent }}>
         <span className="text-purple-400">{name}</span>
@@ -91,7 +91,7 @@ function JsonNode({ name, value, level, defaultExpandLevel, isLast }: JsonNodePr
   const bracket = Array.isArray(value) ? ['[', ']'] : ['{', '}'];
 
   if (!isExpanded) {
-    // 折叠状态 - 单行显示
+    // Collapsed state - single line display
     return (
       <div
         className="flex items-center cursor-pointer hover:bg-gray-800/50 rounded leading-5"
@@ -109,7 +109,7 @@ function JsonNode({ name, value, level, defaultExpandLevel, isLast }: JsonNodePr
     );
   }
 
-  // 展开状态
+  // Expanded state
   return (
     <>
       <div

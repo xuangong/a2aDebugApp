@@ -1,6 +1,6 @@
 /**
- * Windows 自定义标题栏组件
- * 仅在 Windows/Linux 平台上显示
+ * Windows Custom Title Bar Component
+ * Only shown on Windows/Linux platforms
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -13,7 +13,7 @@ interface WindowsTitleBarProps {
 export function WindowsTitleBar({ title = 'A2A Debug App' }: WindowsTitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
-  // 初始化时获取窗口最大化状态
+  // Get window maximized state on init
   useEffect(() => {
     const checkMaximized = async () => {
       const maximized = await window.electronAPI.windowIsMaximized();
@@ -28,7 +28,7 @@ export function WindowsTitleBar({ title = 'A2A Debug App' }: WindowsTitleBarProp
 
   const handleMaximize = useCallback(async () => {
     await window.electronAPI.windowMaximize();
-    // 切换后更新状态
+    // Update state after toggle
     const maximized = await window.electronAPI.windowIsMaximized();
     setIsMaximized(maximized);
   }, []);
@@ -40,16 +40,16 @@ export function WindowsTitleBar({ title = 'A2A Debug App' }: WindowsTitleBarProp
   return (
     <div className="windows-titlebar h-8 flex items-center justify-between bg-gray-100 dark:bg-gray-900 select-none"
          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-      {/* 左侧标题 */}
+      {/* Left title */}
       <div className="flex items-center px-3 h-full">
         <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
           {title}
         </span>
       </div>
 
-      {/* 右侧窗口控制按钮 */}
+      {/* Right window control buttons */}
       <div className="flex h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {/* 最小化 */}
+        {/* Minimize */}
         <button
           onClick={handleMinimize}
           className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -58,7 +58,7 @@ export function WindowsTitleBar({ title = 'A2A Debug App' }: WindowsTitleBarProp
           <Minus className="w-4 h-4 text-gray-600 dark:text-gray-400" />
         </button>
 
-        {/* 最大化/还原 */}
+        {/* Maximize/Restore */}
         <button
           onClick={handleMaximize}
           className="w-12 h-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -71,7 +71,7 @@ export function WindowsTitleBar({ title = 'A2A Debug App' }: WindowsTitleBarProp
           )}
         </button>
 
-        {/* 关闭 */}
+        {/* Close */}
         <button
           onClick={handleClose}
           className="w-12 h-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors group"

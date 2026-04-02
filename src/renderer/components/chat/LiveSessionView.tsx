@@ -71,7 +71,7 @@ export function LiveSessionView({ contextId }: LiveSessionViewProps) {
 
   return (
     <div className="flex-1 flex min-h-0">
-      {/* 会话主区域 */}
+      {/* Session main area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -130,7 +130,7 @@ export function LiveSessionView({ contextId }: LiveSessionViewProps) {
       </div>
       </div>
 
-      {/* 调试面板 */}
+      {/* Debug panel */}
       <DebugPanel messages={messages} />
     </div>
   );

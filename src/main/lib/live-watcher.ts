@@ -1,7 +1,7 @@
 /**
- * Live Watcher - 实时监听录制目录
+ * Live Watcher - Real-time recording directory monitor
  *
- * 使用 chokidar 监听文件变化，实时推送会话更新到渲染进程
+ * Uses chokidar to watch file changes, pushes session updates to renderer in real-time
  */
 
 import { watch, type FSWatcher } from 'chokidar';
@@ -46,7 +46,7 @@ export class LiveWatcher {
   private updateTimer: NodeJS.Timeout | null = null;
 
   /**
-   * 开始监听目录
+   * Start watching directory
    */
   startWatch(dir: string): boolean {
     if (this.watcher) {
@@ -65,16 +65,16 @@ export class LiveWatcher {
     this.sessions.clear();
     this.conversationsMeta.clear();
 
-    // 初始加载
+    // Initial load
     this.loadConversationsIndex();
     debugLog('conversationsMeta count: ' + this.conversationsMeta.size);
     this.scanExistingSessions();
     debugLog('sessions count after scan: ' + this.sessions.size);
 
-    // 对 WSL/UNC 路径使用 polling（fs.watch 不支持这些路径）
+    // Use polling for WSL/UNC paths (fs.watch doesn't support them)
     const usePolling = /^[\\/]{2}/.test(dir);
 
-    // 创建 watcher
+    // Create watcher
     this.watcher = watch(dir, {
       persistent: true,
       ignoreInitial: true,
@@ -90,14 +90,14 @@ export class LiveWatcher {
     this.watcher.on('change', (filePath) => this.handleFileChange(filePath));
     this.watcher.on('add', (filePath) => this.handleFileAdd(filePath));
 
-    // 定期更新状态（检测 idle/inactive）
+    // Periodically update status (detect idle/inactive)
     this.updateTimer = setInterval(() => this.updateSessionStatuses(), 1000);
 
     return true;
   }
 
   /**
-   * 停止监听
+   * Stop watching
    */
   stopWatch(): void {
     if (this.watcher) {
@@ -114,21 +114,21 @@ export class LiveWatcher {
   }
 
   /**
-   * 获取当前监听状态
+   * Get current watch state
    */
   isWatching(): boolean {
     return this.watcher !== null;
   }
 
   /**
-   * 获取监听目录
+   * Get watched directory
    */
   getWatchDir(): string | null {
     return this.watchDir;
   }
 
   /**
-   * 获取所有会话
+   * Get all sessions
    */
   getSessions(): LiveSession[] {
     const now = Date.now();
@@ -147,12 +147,12 @@ export class LiveWatcher {
       });
     }
 
-    // 按最后活动时间排序
+    // Sort by last activity time
     return sessions.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
   /**
-   * 获取会话消息（只读）
+   * Get session messages (read-only)
    */
   getSessionMessages(contextId: string): Message[] {
     if (!this.watchDir) return [];
@@ -170,7 +170,7 @@ export class LiveWatcher {
   }
 
   /**
-   * 获取会话的 debug logs（只读）
+   * Get session debug logs (read-only)
    */
   getSessionDebugLogs(contextId: string): JsonRpcLogEntry[] {
     if (!this.watchDir) return [];
@@ -216,7 +216,7 @@ export class LiveWatcher {
     debugLog('conversationsDir: ' + conversationsDir + ' exists: ' + existsSync(conversationsDir));
     if (!existsSync(conversationsDir)) return;
 
-    // 从 index 中加载所有会话
+    // Load all sessions from index
     for (const [contextId] of this.conversationsMeta) {
       const messagesPath = join(conversationsDir, `${contextId}.jsonl`);
       const exists = existsSync(messagesPath);
@@ -236,14 +236,14 @@ export class LiveWatcher {
       return;
     }
 
-    // 检查是否是消息文件
+    // Check if it's a messages file
     if (fileName.endsWith('.jsonl') && !fileName.endsWith('.debug.jsonl')) {
       const contextId = fileName.replace('.jsonl', '');
       this.updateSessionState(contextId, filePath);
       this.notifyUpdate();
     }
 
-    // debug.jsonl 变化时也通知更新，以便渲染进程刷新 debug logs
+    // Also notify on debug.jsonl changes so renderer can refresh debug logs
     if (fileName.endsWith('.debug.jsonl')) {
       this.notifyUpdate();
     }
@@ -293,7 +293,7 @@ export class LiveWatcher {
   }
 
   private updateSessionStatuses(): void {
-    // 重新计算状态并通知（如果有变化）
+    // Recalculate status and notify (if changed)
     this.notifyUpdate();
   }
 
@@ -313,5 +313,5 @@ export class LiveWatcher {
   }
 }
 
-// 单例
+// Singleton
 export const liveWatcher = new LiveWatcher();

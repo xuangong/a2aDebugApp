@@ -1,5 +1,5 @@
 /**
- * 侧边栏组件
+ * Sidebar Component
  * Apple Design System - Clean, Minimal
  */
 

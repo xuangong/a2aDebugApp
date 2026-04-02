@@ -1,5 +1,5 @@
 /**
- * 主应用组件
+ * Main Application Component
  * Apple Design System
  */
 
@@ -15,6 +15,7 @@ import {
   appModeAtom,
   liveSelectedContextIdAtom,
   authConfigAtom,
+  featureFlagsAtom,
 } from './atoms/chat-atoms';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { ChatView } from './components/chat/ChatView';
@@ -30,13 +31,14 @@ export default function App() {
   const setEndpoint = useSetAtom(endpointAtom);
   const setDebugLogsMap = useSetAtom(debugLogsMapAtom);
   const setAuthConfig = useSetAtom(authConfigAtom);
+  const setFeatureFlags = useSetAtom(featureFlagsAtom);
   const appMode = useAtomValue(appModeAtom);
   const liveSelectedContextId = useAtomValue(liveSelectedContextIdAtom);
 
   const [platform, setPlatform] = useState<NodeJS.Platform | null>(null);
   const isMac = platform === 'darwin';
   const [isDark, setIsDark] = useState(() => {
-    // 同步初始状态与 index.html 中的主题设置
+    // Sync initial state with theme settings in index.html
     return document.documentElement.classList.contains('dark');
   });
 
@@ -68,6 +70,11 @@ export default function App() {
         // Load saved auth config
         if (loadedConfig.auth) {
           setAuthConfig(loadedConfig.auth);
+        }
+
+        // Load saved feature flags
+        if (loadedConfig.featureFlags) {
+          setFeatureFlags(loadedConfig.featureFlags);
         }
 
         const conversations = await window.electronAPI.listConversations();

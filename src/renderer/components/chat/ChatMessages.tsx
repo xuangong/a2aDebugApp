@@ -1,5 +1,5 @@
 /**
- * 消息列表组件
+ * Message List Component
  */
 
 import { useEffect, useRef, useMemo } from 'react';
@@ -11,7 +11,7 @@ import { StreamingMessage } from './StreamingMessage';
 import type { AssistantMessage as AssistantMessageType } from '../../../shared/types';
 
 interface ChatMessagesProps {
-  /** task-clarify 表单提交回调 */
+  /** task-clarify form submit callback */
   onSubmitTaskClarify?: (responses: Record<string, string | string[]>, toolCallId?: string) => Promise<void>;
 }
 
@@ -27,7 +27,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
   const searchQuery = useAtomValue(chatSearchQueryAtom);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 过滤消息：搜索 assistant 消息内容
+  // Filter messages: search assistant message content
   const { filteredMessages, matchingIds } = useMemo(() => {
     if (!searchQuery.trim()) {
       return { filteredMessages: messages, matchingIds: new Set<string>() };
@@ -35,11 +35,11 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
     const query = searchQuery.toLowerCase();
     const ids = new Set<string>();
 
-    // 找出匹配的 assistant 消息
+    // Find matching assistant messages
     messages.forEach((msg) => {
       if (msg.role === 'assistant') {
         const assistantMsg = msg as AssistantMessageType;
-        // 搜索内容和 rawResponse
+        // Search content and rawResponse
         const content = assistantMsg.content?.toLowerCase() || '';
         const rawJson = JSON.stringify(assistantMsg.rawResponse || []).toLowerCase();
         if (content.includes(query) || rawJson.includes(query)) {
@@ -51,12 +51,12 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
     return { filteredMessages: messages, matchingIds: ids };
   }, [messages, searchQuery]);
 
-  // 自动滚动到底部
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent, streamingToolCalls]);
 
-  // 点击消息时设置选中状态（toggle）
+  // Toggle message selection on click
   const handleMessageClick = (messageId: string) => {
     if (selectedMessageId === messageId) {
       setSelectedMessageId(null);
@@ -65,9 +65,9 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
     }
   };
 
-  // 点击空白处时取消选择
+  // Deselect when clicking empty area
   const handleContainerClick = (e: React.MouseEvent) => {
-    // 只有点击容器本身（不是子元素）时才取消选择
+    // Only deselect when clicking the container itself (not child elements)
     if (e.target === e.currentTarget) {
       setSelectedMessageId(null);
     }
@@ -102,7 +102,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
           )
         ))}
 
-        {/* 流式消息 - 实时渲染 XML 工具调用和 Native Tool Calls */}
+        {/* Streaming message - real-time rendering of XML tool calls and Native Tool Calls */}
         {hasStreamingContent && (
           <StreamingMessage
             content={streamingContent}
@@ -114,7 +114,7 @@ export function ChatMessages({ onSubmitTaskClarify }: ChatMessagesProps) {
           />
         )}
 
-        {/* 加载指示器 - Apple style */}
+        {/* Loading indicator - Apple style */}
         {streaming && !hasStreamingContent && (
           <div className="flex justify-start animate-fade-in">
             <div className="apple-message-assistant">

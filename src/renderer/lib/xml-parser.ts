@@ -1,5 +1,5 @@
 /**
- * 简化的 XML 解析器，用于解析 agent 响应中的工具调用
+ * Simplified XML parser for parsing tool calls in agent responses
  */
 
 export interface XmlCall {
@@ -11,7 +11,7 @@ export interface XmlCall {
   rawXml: string;
 }
 
-// 注册的工具标签
+// Registered tool tags
 const REGISTERED_TAGS = new Set([
   'ask',
   'complete',
@@ -41,26 +41,26 @@ const REGISTERED_TAGS = new Set([
 ]);
 
 /**
- * 解析文本中的 XML 工具调用
+ * Parse XML tool calls from text
  */
 export function parseXmlCalls(text: string): { cleanText: string; xmlCalls: XmlCall[] } {
   const xmlCalls: XmlCall[] = [];
   let cleanText = text;
 
-  // 匹配 XML 标签的正则表达式
-  // 支持自闭合标签和带内容的标签
+  // Regex for matching XML tags
+  // Supports self-closing tags and tags with content
   const tagPattern = /<(\w[\w-]*)\s*([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/\1>)/g;
 
   let match;
   while ((match = tagPattern.exec(text)) !== null) {
     const [fullMatch, tagName, attributesStr, content] = match;
 
-    // 只处理注册的标签
+    // Only process registered tags
     if (!REGISTERED_TAGS.has(tagName)) {
       continue;
     }
 
-    // 解析属性
+    // Parse attributes
     const attributes: Record<string, string> = {};
     const attrPattern = /(\w[\w-_]*)=["']([^"']*)["']/g;
     let attrMatch;
@@ -68,7 +68,7 @@ export function parseXmlCalls(text: string): { cleanText: string; xmlCalls: XmlC
       attributes[attrMatch[1]] = attrMatch[2];
     }
 
-    // 提取 tool_call_id
+    // Extract tool_call_id
     const toolCallId = attributes['_tool_call_id'] || attributes['tool_call_id'] || `tool-${Date.now()}-${xmlCalls.length}`;
 
     xmlCalls.push({
@@ -81,8 +81,8 @@ export function parseXmlCalls(text: string): { cleanText: string; xmlCalls: XmlC
     });
   }
 
-  // 从 cleanText 中移除所有匹配的 XML 标签
-  // 需要按偏移量从后向前移除，避免索引变化
+  // Remove all matched XML tags from cleanText
+  // Remove from back to front by offset to avoid index shifts
   const sortedCalls = [...xmlCalls].sort((a, b) => b.offsetInText - a.offsetInText);
   for (const call of sortedCalls) {
     cleanText = cleanText.substring(0, call.offsetInText) + cleanText.substring(call.offsetInText + call.rawXml.length);
@@ -92,7 +92,7 @@ export function parseXmlCalls(text: string): { cleanText: string; xmlCalls: XmlC
 }
 
 /**
- * 获取工具的人类可读名称
+ * Get human-readable name for tool
  */
 export function getHumanReadableToolName(tagName: string | null | undefined): string {
   if (!tagName) {
@@ -131,7 +131,7 @@ export function getHumanReadableToolName(tagName: string | null | undefined): st
 }
 
 /**
- * 提取主要参数用于显示
+ * Extract primary parameters for display
  */
 export function extractPrimaryParam(xmlCall: XmlCall): string | null {
   const { name, attributes, content } = xmlCall;
@@ -148,16 +148,16 @@ export function extractPrimaryParam(xmlCall: XmlCall): string | null {
       return attributes['command'] || content.slice(0, 50) || null;
     case 'web-search':
     case 'enterprise-search': {
-      // 优先使用 query 属性
+      // Prefer query attribute
       if (attributes['query']) {
         return attributes['query'];
       }
-      // 尝试解析 JSON 数组格式的查询列表
+      // Try parsing JSON array format query list
       if (content) {
         try {
           const queries = JSON.parse(content);
           if (Array.isArray(queries) && queries.length > 0) {
-            // 显示第一个查询，加上总数提示
+            // Show first query with total count hint
             const firstQuery = String(queries[0]);
             if (queries.length > 1) {
               return `${firstQuery} (+${queries.length - 1} more)`;
@@ -165,7 +165,7 @@ export function extractPrimaryParam(xmlCall: XmlCall): string | null {
             return firstQuery;
           }
         } catch {
-          // 不是 JSON，直接截取显示
+          // Not JSON, truncate and display directly
         }
         return content.slice(0, 50);
       }

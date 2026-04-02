@@ -1,23 +1,26 @@
 /**
- * Jotai 状态管理
+ * Jotai State Management
  */
 
 import { atom } from 'jotai';
 import type { Conversation, Message, AppConfig, A2AResult, AgentCard, AuthConfig, JsonRpcLogEntry, LiveSession, NativeToolCall, ToolResultData, TaskState, FileArtifact } from '../../shared/types';
 
-// ===== 配置状态 =====
+// ===== Config State =====
 export const configAtom = atom<AppConfig>({
   defaultEndpoint: 'http://localhost:8000/a2a/',
   theme: 'dark',
 });
 
-// ===== 认证状态 =====
+// ===== Auth State =====
 export const authConfigAtom = atom<AuthConfig>({
   bearerToken: '',
   accountId: '',
 });
 
-// ===== Task 状态（A2A 协议，per-conversation）=====
+// ===== Feature Flags State =====
+export const featureFlagsAtom = atom('enableA2A&enableNativeToolCall');
+
+// ===== Task State (A2A Protocol, per-conversation) =====
 // Re-export TaskState from shared types
 export type { TaskState } from '../../shared/types';
 
@@ -52,24 +55,24 @@ export const tasksAtom = atom(
   }
 );
 
-// 当前活跃的 task（派生自当前对话的 tasks）
+// Currently active task (derived from current conversation's tasks)
 export const currentTaskAtom = atom<TaskInfo | null>((get) => {
   const tasks = get(tasksAtom);
   return tasks.length > 0 ? tasks[tasks.length - 1] : null;
 });
 
-// ===== 对话状态 =====
+// ===== Conversation State =====
 export const conversationsAtom = atom<Conversation[]>([]);
 export const currentConversationIdAtom = atom<string | null>(null);
 
-// 当前对话（派生状态）
+// Current conversation (derived state)
 export const currentConversationAtom = atom((get) => {
   const conversations = get(conversationsAtom);
   const currentId = get(currentConversationIdAtom);
   return conversations.find((c) => c.id === currentId) || null;
 });
 
-// ===== 消息状态（per-conversation）=====
+// ===== Message State (per-conversation) =====
 // Map: conversationId -> messages
 export const messagesMapAtom = atom<Map<string, Message[]>>(new Map());
 
@@ -91,7 +94,7 @@ export const messagesAtom = atom(
   }
 );
 
-// ===== 流式状态（per-conversation）=====
+// ===== Streaming State (per-conversation) =====
 // Per-conversation streaming state structure
 export interface ConversationStreamingState {
   streaming: boolean;
@@ -249,29 +252,29 @@ export const currentStreamingMessageIdAtom = atom(
   }
 );
 
-// ===== UI 状态 =====
+// ===== UI State =====
 export type ViewMode = 'raw' | 'rendered' | 'content';
 export const viewModeAtom = atom<ViewMode>('rendered');
 
-// 端点配置
+// Endpoint config
 export const endpointAtom = atom('http://localhost:8000/a2a/');
 
-// 侧边栏展开状态
+// Sidebar expanded state
 export const sidebarExpandedAtom = atom(true);
 
-// 调试面板展开状态
+// Debug panel expanded state
 export const debugPanelExpandedAtom = atom(true);
 
-// 聊天消息搜索
+// Chat message search
 export const chatSearchQueryAtom = atom('');
 export const chatSearchVisibleAtom = atom(false);
 
-// ===== Agent Card 状态 =====
+// ===== Agent Card State =====
 export const agentCardAtom = atom<AgentCard | null>(null);
 export const agentCardLoadingAtom = atom(false);
 export const agentCardErrorAtom = atom<string | null>(null);
 
-// ===== 调试日志状态（per-conversation）=====
+// ===== Debug Logs State (per-conversation) =====
 // Map: conversationId -> debug logs
 export const debugLogsMapAtom = atom<Map<string, JsonRpcLogEntry[]>>(new Map());
 
@@ -293,7 +296,7 @@ export const debugLogsAtom = atom(
   }
 );
 
-// 当前选中的消息 ID（per-conversation，用于高亮对应日志）
+// Currently selected message ID (per-conversation, for highlighting corresponding logs)
 export const selectedMessageIdMapAtom = atom<Map<string, string | null>>(new Map());
 
 export const selectedMessageIdAtom = atom(
@@ -311,11 +314,11 @@ export const selectedMessageIdAtom = atom(
   }
 );
 
-// ===== Side Panel 状态（与主线前端对齐）=====
+// ===== Side Panel State (aligned with main frontend) =====
 export type SidePanelTab = 'logs' | 'tool' | 'artifacts';
 export const sidePanelTabAtom = atom<SidePanelTab>('logs');
 
-// 当前选中的工具调用（per-conversation，用于在右侧面板显示详情）
+// Currently selected tool call (per-conversation, for displaying details in side panel)
 export interface SelectedToolCall {
   type: 'xml' | 'native';
   toolName: string;
@@ -349,15 +352,15 @@ export const selectedToolCallAtom = atom(
   }
 );
 
-// ===== 错误状态 =====
+// ===== Error State =====
 export const errorAtom = atom<string | null>(null);
 
-// ===== Live Viewer 状态 =====
+// ===== Live Viewer State =====
 export const liveWatchingAtom = atom(false);
 export const liveWatchDirAtom = atom<string | null>(null);
 export const liveSessionsAtom = atom<LiveSession[]>([]);
 export const liveSelectedContextIdAtom = atom<string | null>(null);
 
-// 当前视图模式：debug（正常调试）或 live（实时监控）
+// Current view mode: debug (normal debugging) or live (live monitoring)
 export type AppMode = 'debug' | 'live';
 export const appModeAtom = atom<AppMode>('debug');

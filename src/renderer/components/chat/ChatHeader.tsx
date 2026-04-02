@@ -1,5 +1,5 @@
 /**
- * 聊天头部组件
+ * Chat Header Component
  * Apple Design System
  */
 
@@ -30,7 +30,7 @@ export function ChatHeader() {
   const [copied, setCopied] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // 搜索框显示时自动聚焦
+  // Auto-focus search input when shown
   useEffect(() => {
     if (searchVisible) {
       setTimeout(() => searchInputRef.current?.focus(), 0);
@@ -56,13 +56,13 @@ export function ChatHeader() {
 
   return (
     <div className="relative">
-      {/* 标题栏拖拽区域 */}
+      {/* Title bar drag area */}
       <div className="h-11 titlebar-drag" />
 
-      {/* 内容区域 - Apple style header */}
+      {/* Content area - Apple style header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-apple-gray-300/60 dark:border-[#38383A]">
         <div className="flex items-center gap-3">
-          {/* Agent 信息 */}
+          {/* Agent info */}
           {agentCard ? (
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 bg-apple-blue rounded-apple flex items-center justify-center">
@@ -88,7 +88,7 @@ export function ChatHeader() {
             {currentConversation.endpoint || endpoint}
           </span>
 
-          {/* Context ID 显示按钮 */}
+          {/* Context ID display button */}
           <button
             onClick={() => setShowContextId(!showContextId)}
             className={`
@@ -106,7 +106,16 @@ export function ChatHeader() {
         </div>
 
         <div className="flex items-center gap-2 titlebar-no-drag">
-          {/* 搜索按钮 */}
+          {/* Connection settings button */}
+          <button
+            onClick={() => setShowConnectionPanel(!showConnectionPanel)}
+            className={`btn-apple-icon ${showConnectionPanel ? 'bg-apple-blue/10 text-apple-blue' : ''}`}
+            title="Server Connection"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+
+          {/* Search button */}
           <button
             onClick={toggleSearch}
             className={`btn-apple-icon ${searchVisible ? 'bg-apple-blue/10 text-apple-blue' : ''}`}
@@ -115,7 +124,7 @@ export function ChatHeader() {
             <Search className="w-4 h-4" />
           </button>
 
-          {/* 视图切换 - Apple Segmented Control */}
+          {/* View switcher - Apple Segmented Control */}
           <div className="apple-segmented">
             <button
               onClick={() => setViewMode('rendered')}
@@ -123,7 +132,7 @@ export function ChatHeader() {
               title="Rendered view"
             >
               <Eye className="w-3 h-3" />
-              <span className="hidden sm:inline">Rendered</span>
+              <span className="hidden lg:inline">Rendered</span>
             </button>
             <button
               onClick={() => setViewMode('raw')}
@@ -131,7 +140,7 @@ export function ChatHeader() {
               title="Raw JSON view"
             >
               <Code className="w-3 h-3" />
-              <span className="hidden sm:inline">Raw</span>
+              <span className="hidden lg:inline">Raw</span>
             </button>
             <button
               onClick={() => setViewMode('content')}
@@ -139,22 +148,13 @@ export function ChatHeader() {
               title="Raw content view"
             >
               <FileText className="w-3 h-3" />
-              <span className="hidden sm:inline">Content</span>
+              <span className="hidden lg:inline">Content</span>
             </button>
           </div>
-
-          {/* 连接设置按钮 */}
-          <button
-            onClick={() => setShowConnectionPanel(!showConnectionPanel)}
-            className={`btn-apple-icon ${showConnectionPanel ? 'bg-apple-blue/10 text-apple-blue' : ''}`}
-            title="Server Connection"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
-      {/* Context ID 详情面板 */}
+      {/* Context ID detail panel */}
       {showContextId && (
         <div className="px-6 py-3 bg-apple-gray-50 dark:bg-[#1C1C1E] border-b border-apple-gray-300/60 dark:border-[#38383A] animate-slide-up">
           <div className="flex items-center justify-between">
@@ -196,14 +196,14 @@ export function ChatHeader() {
         </div>
       )}
 
-      {/* 连接面板 */}
+      {/* Connection panel */}
       {showConnectionPanel && (
         <div className="absolute top-full right-6 z-50 mt-2 animate-scale-in">
           <ConnectionPanel onClose={() => setShowConnectionPanel(false)} />
         </div>
       )}
 
-      {/* 搜索框 - Apple vibrancy style */}
+      {/* Search box - Apple vibrancy style */}
       {searchVisible && (
         <div className="absolute top-full left-1/2 -translate-x-1/2 z-50 mt-2 animate-scale-in">
           <div className="apple-vibrancy apple-card rounded-apple-lg p-3 shadow-apple-lg">

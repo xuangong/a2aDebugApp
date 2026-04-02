@@ -1,6 +1,6 @@
 /**
- * Artifacts 面板组件
- * 展示当前 Conversation 生成的文档（从 backend 返回的 file_artifacts 数据）
+ * Artifacts Panel Component
+ * Displays documents generated in the current conversation (file_artifacts data from backend)
  */
 
 import { useMemo } from 'react';

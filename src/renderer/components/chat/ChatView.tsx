@@ -1,5 +1,5 @@
 /**
- * 聊天主视图
+ * Chat Main View
  */
 
 import { useAtomValue } from 'jotai';
@@ -22,7 +22,7 @@ export function ChatView() {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-md w-full space-y-6">
-          {/* 欢迎信息 */}
+          {/* Welcome message */}
           <div className="text-center">
             <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Bot className="w-8 h-8 text-primary-600 dark:text-primary-400" />
@@ -35,10 +35,10 @@ export function ChatView() {
             </p>
           </div>
 
-          {/* 连接面板 */}
+          {/* Connection panel */}
           <ConnectionPanel />
 
-          {/* 提示信息 */}
+          {/* Hint message */}
           <div className="text-center text-xs text-gray-400 dark:text-gray-500">
             <p>Create a new conversation from the sidebar after connecting</p>
           </div>
@@ -49,7 +49,7 @@ export function ChatView() {
 
   return (
     <div className="flex-1 flex min-h-0">
-      {/* 聊天主区域 */}
+      {/* Chat main area */}
       <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader />
         <TaskStatusBar />
@@ -57,7 +57,7 @@ export function ChatView() {
         <ChatInput />
       </div>
 
-      {/* 调试面板 */}
+      {/* Debug panel */}
       <DebugPanel />
     </div>
   );

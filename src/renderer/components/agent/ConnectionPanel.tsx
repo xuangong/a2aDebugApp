@@ -1,17 +1,18 @@
 /**
- * 连接配置面板
+ * Connection Configuration Panel
  * Apple Design System
  */
 
 import { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
-import { Server, RefreshCw, Check, X, Link, Key, User, HelpCircle, Clock, Clipboard } from 'lucide-react';
+import { Server, RefreshCw, Check, X, Link, Key, User, HelpCircle, Clock, Clipboard, Settings } from 'lucide-react';
 import {
   endpointAtom,
   agentCardAtom,
   agentCardLoadingAtom,
   agentCardErrorAtom,
   authConfigAtom,
+  featureFlagsAtom,
 } from '../../atoms/chat-atoms';
 import { AgentCardDisplay } from './AgentCardDisplay';
 
@@ -20,7 +21,7 @@ interface ConnectionPanelProps {
 }
 
 /**
- * 计算剩余时间
+ * Calculate remaining time
  */
 function formatTimeRemaining(expiresOn: number): { text: string; isExpired: boolean; isWarning: boolean } {
   const now = Math.floor(Date.now() / 1000);
@@ -45,11 +46,14 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   const [loading, setLoading] = useAtom(agentCardLoadingAtom);
   const [error, setError] = useAtom(agentCardErrorAtom);
   const [authConfig, setAuthConfig] = useAtom(authConfigAtom);
+  const [featureFlags, setFeatureFlags] = useAtom(featureFlagsAtom);
 
   const [tempEndpoint, setTempEndpoint] = useState(endpoint);
   const [tempBearerToken, setTempBearerToken] = useState(authConfig.bearerToken || '');
+  const [tempFeatureFlags, setTempFeatureFlags] = useState(featureFlags);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAuthFields, setShowAuthFields] = useState(false);
+  const [showFeatureFlags, setShowFeatureFlags] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [tokenExpiresOn, setTokenExpiresOn] = useState<number | null>(authConfig.expiresOn || null);
   const [jsonInput, setJsonInput] = useState('');
@@ -90,44 +94,119 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
   const endpointValidation = validateEndpoint(tempEndpoint);
 
-  // 解析粘贴的 JSON
+  // Parse pasted JSON
   const handleParseJson = () => {
     setParseError(null);
     try {
-      const data = JSON.parse(jsonInput.trim());
+      let data = JSON.parse(jsonInput.trim());
 
-      // 提取 Bearer Token (支持多种格式)
-      // 本地开发: idToken (普通 JWT，可解码)
-      // 生产环境: accessToken (JWE，需 MISE 验证)
-      if (data.credentialType === 'IdToken' && data.secret) {
-        // MSAL idtoken 格式 (推荐用于本地开发)
-        setTempBearerToken(data.secret);
+      // Unwrap SocietasSsoResult wrapper: { result: { accessToken, ... }, timestamp }
+      if (data.result && typeof data.result === 'object' && data.result.accessToken) {
+        data = data.result;
+      }
+
+      // Auto-detect multiple token formats:
+      // Format 1: SocietasSsoResult - MSAL AuthenticationResult { accessToken, idToken, expiresOn, scopes, ... }
+      // Format 2: MSAL cache idtoken - { credentialType: "IdToken", secret: "..." }
+      // Format 3: MSAL cache accesstoken - { credentialType: "AccessToken", secret: "...", target: "..." }
+      // Format 4: SocietasCacheToken - { access_token: "..." }
+
+      let token = '';
+      let parsedExpiresOn: number | null = null;
+
+      if (data.accessToken && data.idToken && data.scopes) {
+        // Format 1: SocietasSsoResult (MSAL AuthenticationResult)
+        // Validate scopes contain Societas.Access
+        const scopes = Array.isArray(data.scopes) ? data.scopes : [];
+        const hasSocietasScope = scopes.some((s: string) => s.includes('Societas.Access'));
+        if (!hasSocietasScope) {
+          setParseError(`Wrong token scopes: ${JSON.stringify(scopes)}. Expected scope containing "Societas.Access".`);
+          return;
+        }
+
+        // Detect if accessToken is JWE (encrypted) — JWE has 5 dot-separated parts,
+        // or the header alg is an encryption algorithm (RSA-OAEP, A256KW, etc.)
+        // Localhost backend can't decrypt JWE, so use idToken instead.
+        let useIdToken = false;
+        try {
+          const headerB64 = data.accessToken.split('.')[0];
+          const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
+          if (header.alg && (header.alg.startsWith('RSA-OAEP') || header.alg.startsWith('A') || header.alg === 'dir')) {
+            useIdToken = true;
+          }
+        } catch {
+          // If header parse fails, check dot-count: JWE has 5 parts, JWS has 3
+          if (data.accessToken.split('.').length === 5) {
+            useIdToken = true;
+          }
+        }
+
+        if (useIdToken) {
+          token = data.idToken;
+          setParseError(null);
+          // Show info that idToken is being used (not an error, just informational)
+          console.log('[Auth] accessToken is JWE (encrypted), using idToken for localhost compatibility');
+        } else {
+          token = data.accessToken;
+        }
+
+        // Parse ISO date string or epoch
+        if (data.expiresOn) {
+          if (typeof data.expiresOn === 'string' && data.expiresOn.includes('T')) {
+            // ISO date string: "2026-04-02T14:03:05.000Z"
+            parsedExpiresOn = Math.floor(new Date(data.expiresOn).getTime() / 1000);
+          } else {
+            parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
+          }
+        }
+      } else if (data.credentialType === 'IdToken' && data.secret) {
+        // Format 2: MSAL idtoken cache entry
+        token = data.secret;
       } else if (data.access_token) {
-        // SocietasCacheToken 格式 (Societas 内部 token)
-        setTempBearerToken(data.access_token);
+        // Format 4: SocietasCacheToken
+        token = data.access_token;
       } else if (data.secret) {
-        // MSAL accesstoken 格式 (生产环境 JWE token)
-        // Validate target contains "Societas.Access" for production accessTokens
+        // Format 3: MSAL accesstoken cache entry
         if (data.credentialType === 'AccessToken' && data.target) {
           if (!data.target.includes('Societas.Access')) {
             setParseError(`Wrong token target: "${data.target}". Please use the accesstoken with target containing "Societas.Access".`);
             return;
           }
         }
-        setTempBearerToken(data.secret);
+        token = data.secret;
       } else {
-        setParseError('No valid token found in JSON. Expected "secret" or "access_token" field.');
+        setParseError('Unrecognized format. Supported: SocietasSsoResult, MSAL cache entry (idtoken/accesstoken), or {access_token}.');
         return;
       }
 
-      // Account ID 不再需要手动填写，服务器会从 token 自动解析
+      setTempBearerToken(token);
 
-      // 提取过期时间并检查是否已过期
-      let parsedExpiresOn: number | null = null;
-      if (data.expiresOn) {
-        parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
-      } else if (data.expires_on) {
-        parsedExpiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
+      // Extract expiration time (if not already parsed from Format 1)
+      if (!parsedExpiresOn) {
+        if (data.expiresOn) {
+          if (typeof data.expiresOn === 'string' && data.expiresOn.includes('T')) {
+            parsedExpiresOn = Math.floor(new Date(data.expiresOn).getTime() / 1000);
+          } else {
+            parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
+          }
+        } else if (data.expires_on) {
+          parsedExpiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
+        }
+      }
+
+      // If still no expiration, try extracting exp from JWT payload
+      if (!parsedExpiresOn && token) {
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            if (payload.exp && typeof payload.exp === 'number') {
+              parsedExpiresOn = payload.exp;
+            }
+          }
+        } catch {
+          // JWT parse failed, ignore
+        }
       }
 
       if (parsedExpiresOn) {
@@ -160,18 +239,22 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
     setError(null);
     setConnectionStatus('idle');
 
-    // 更新认证配置 (包含 bearerToken 和 expiresOn)
+    // Update auth config (includes bearerToken and expiresOn)
     const newAuth = {
       bearerToken: tempBearerToken.trim() || undefined,
       expiresOn: tokenExpiresOn || undefined,
     };
     setAuthConfig(newAuth);
 
+    // Update Feature Flags
+    const newFeatureFlags = tempFeatureFlags.trim() || 'enableA2A&enableNativeToolCall';
+    setFeatureFlags(newFeatureFlags);
+
     try {
       const card = await window.electronAPI.getAgentCard(tempEndpoint, newAuth);
       setAgentCard(card);
       setEndpoint(tempEndpoint);
-      await window.electronAPI.setConfig({ defaultEndpoint: tempEndpoint, auth: newAuth });
+      await window.electronAPI.setConfig({ defaultEndpoint: tempEndpoint, auth: newAuth, featureFlags: newFeatureFlags });
       setConnectionStatus('success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed');
@@ -271,7 +354,15 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
             <Key className="w-4 h-4" />
             Authentication Settings
             {/* Auth status indicator */}
-            {hasValidToken ? (
+            {hasValidToken && tokenExpiresOn ? (
+              <span className={`ml-1 px-1.5 py-0.5 text-[10px] rounded-full ${
+                formatTimeRemaining(tokenExpiresOn).isWarning
+                  ? 'bg-apple-orange/20 text-apple-orange'
+                  : 'bg-apple-green/20 text-apple-green'
+              }`}>
+                ● {formatTimeRemaining(tokenExpiresOn).text}
+              </span>
+            ) : hasValidToken ? (
               <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-apple-green/20 text-apple-green rounded-full">
                 ● Set
               </span>
@@ -334,37 +425,69 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                     How to get Token from Browser:
                   </p>
 
-                  {/* Local Development */}
+                  {/* Method 1: SocietasSsoResult */}
                   <div className="space-y-2 p-2 bg-apple-green/5 rounded-apple border border-apple-green/20">
-                    <p className="font-medium text-apple-green">🏠 Local Development (localhost)</p>
+                    <p className="font-medium text-apple-green">⭐ Method 1: SocietasSsoResult</p>
                     <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      <li>Open Societas frontend (localhost:3000) and login</li>
+                      <li>Open Societas frontend and login</li>
                       <li>DevTools (F12) → Application → Local Storage</li>
-                      <li>Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">idtoken</code></li>
-                      <li>Copy the JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-idtoken-</code></li>
-                      <li>Paste → Extract → Connect</li>
+                      <li>Find key <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">SocietasSsoResult</code></li>
+                      <li>Copy the entire JSON value → Paste → Extract → Connect</li>
                     </ol>
-                    <p className="text-apple-gray-500 text-[10px]">✓ Account ID is automatically resolved from the token</p>
+                    <p className="text-apple-gray-500 text-[10px]">✓ Available after SSO silent login (test/prod). May not exist on localhost.</p>
                   </div>
 
-                  {/* Production / Remote */}
-                  <div className="space-y-2 p-2 bg-apple-purple/5 rounded-apple border border-apple-purple/20">
-                    <p className="font-medium text-apple-purple">☁️ Production / Remote Environment</p>
+                  {/* Method 2: Browser Console (Recommended for localhost) */}
+                  <div className="space-y-2 p-2 bg-apple-orange/5 rounded-apple border border-apple-orange/20">
+                    <p className="font-medium text-apple-orange">🏠 Method 2: Browser Console (Recommended for localhost)</p>
+                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                      When MSAL cache is encrypted or <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">SocietasSsoResult</code> is not available:
+                    </p>
                     <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      <li>Open Societas frontend (production URL) and login</li>
-                      <li>DevTools (F12) → Application → Local Storage</li>
-                      <li>Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code></li>
-                      <li>Find the JSON where <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target</code> contains <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">Societas.Access</code></li>
-                      <li>Copy the entire JSON → Paste → Extract → Connect</li>
+                      <li>Open Societas frontend (localhost:3000) and login</li>
+                      <li>DevTools (F12) → Console</li>
+                      <li>Paste the script below and press Enter:</li>
                     </ol>
-                    <div className="mt-2 p-2 bg-apple-orange/10 rounded-apple border border-apple-orange/30">
-                      <p className="text-apple-orange font-medium">⚠️ Important:</p>
-                      <p className="text-apple-gray-600 dark:text-apple-gray-400">
-                        Multiple accesstokens may exist. Only use the one with <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target: "...Societas.Access"</code>.
-                        Other tokens (e.g., titles.prod.mos.microsoft.com) will not work.
-                      </p>
+                    <div className="relative mt-1.5">
+                      <pre className="text-[10px] bg-[#1C1C1E] text-green-400 p-2 rounded-apple overflow-x-auto whitespace-pre leading-relaxed select-all">{`const m = await __msalInstance.acquireTokenSilent({
+  account: __msalInstance.getActiveAccount(),
+  scopes: ["api://4d206cf7-2973-4ae3-b59c-dffecbaf1424/Societas.Access"]
+});
+copy(JSON.stringify({
+  accessToken: m.accessToken,
+  idToken: m.idToken,
+  scopes: m.scopes,
+  expiresOn: m.expiresOn
+}))`}</pre>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `const m = await __msalInstance.acquireTokenSilent({ account: __msalInstance.getActiveAccount(), scopes: ["api://4d206cf7-2973-4ae3-b59c-dffecbaf1424/Societas.Access"] }); copy(JSON.stringify({ accessToken: m.accessToken, idToken: m.idToken, scopes: m.scopes, expiresOn: m.expiresOn }))`
+                          );
+                        }}
+                        className="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] bg-apple-gray-600/50 hover:bg-apple-gray-600 text-apple-gray-300 rounded transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        Copy
+                      </button>
                     </div>
-                    <p className="text-apple-gray-500 text-[10px]">Note: accessToken is JWE (encrypted), validated by MISE Container on server</p>
+                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2 text-[10px] mt-1">
+                      4. Paste the copied JSON → Extract → Connect
+                    </p>
+                    <p className="text-apple-gray-500 text-[10px]">✓ Token is copied to clipboard automatically.</p>
+                  </div>
+
+                  {/* Method 3: MSAL Cache Entries (Fallback) */}
+                  <div className="space-y-2 p-2 bg-apple-purple/5 rounded-apple border border-apple-purple/20">
+                    <p className="font-medium text-apple-purple">📦 Method 3: MSAL Cache Entries (Legacy)</p>
+                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                      If MSAL cache is not encrypted (older environments):
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                      <li><strong>Local dev:</strong> Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">idtoken</code>, copy JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-idtoken-</code></li>
+                      <li><strong>Production:</strong> Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code>, find JSON where <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target</code> contains <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">Societas.Access</code></li>
+                    </ol>
+                    <p className="text-apple-gray-500 text-[10px]">Note: MSAL cache may be fully encrypted — use Method 2 if entries show as {"id","nonce","data"}</p>
                   </div>
                 </div>
               )}
@@ -386,9 +509,24 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
               <div className="border-t border-apple-gray-200 dark:border-[#38383A] pt-3 space-y-3">
                 {/* Bearer Token */}
                 <div className="space-y-1">
-                  <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
-                    Bearer Token
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
+                      Bearer Token
+                    </label>
+                    {tempBearerToken && (
+                      <button
+                        onClick={() => {
+                          setTempBearerToken('');
+                          setTokenExpiresOn(null);
+                          setAuthConfig({ bearerToken: undefined, expiresOn: undefined });
+                        }}
+                        className="text-apple-xs text-apple-red hover:underline flex items-center gap-1"
+                      >
+                        <X className="w-3 h-3" />
+                        Clear
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-apple-gray-400" />
                     <input
@@ -415,6 +553,52 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Feature Flags Section */}
+        <div className="space-y-2">
+          <button
+            onClick={() => setShowFeatureFlags(!showFeatureFlags)}
+            className="flex items-center gap-2 text-apple-sm font-medium text-apple-gray-700 dark:text-apple-gray-300 hover:text-apple-blue transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Feature Flags
+            <span className={`text-apple-xs transition-transform ${showFeatureFlags ? 'rotate-180' : ''}`}>
+              ▼
+            </span>
+          </button>
+
+          {showFeatureFlags && (
+            <div className="space-y-2 p-3 bg-apple-gray-50 dark:bg-[#2C2C2E] rounded-apple">
+              <label className="block text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400">
+                x-fd-features Header
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={tempFeatureFlags}
+                  onChange={(e) => setTempFeatureFlags(e.target.value)}
+                  placeholder="enableA2A&enableNativeToolCall"
+                  className="apple-input text-apple-xs flex-1"
+                />
+                <button
+                  onClick={async () => {
+                    const newFlags = tempFeatureFlags.trim() || 'enableA2A&enableNativeToolCall';
+                    setFeatureFlags(newFlags);
+                    await window.electronAPI.setConfig({ featureFlags: newFlags });
+                  }}
+                  disabled={tempFeatureFlags === featureFlags}
+                  className="btn-apple text-apple-xs flex items-center gap-1"
+                >
+                  <Check className="w-3 h-3" />
+                  Set
+                </button>
+              </div>
+              <p className="text-[10px] text-apple-gray-500">
+                Use &amp; to separate multiple flags.
+              </p>
             </div>
           )}
         </div>

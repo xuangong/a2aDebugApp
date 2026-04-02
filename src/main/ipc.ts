@@ -1,5 +1,5 @@
 /**
- * IPC 处理器注册
+ * IPC Handler Registration
  */
 
 import { ipcMain, BrowserWindow, dialog } from 'electron';
@@ -16,13 +16,16 @@ const sessions = new Map<string, A2ASession>();
 const a2aClients = new Map<string, A2AClient>();
 
 function getA2AClient(endpoint: string, auth?: AuthConfig): A2AClient {
+  const featureFlags = configManager.get().featureFlags;
   let client = a2aClients.get(endpoint);
   if (!client) {
-    client = new A2AClient({ endpoint, timeout: 60000, auth });
+    client = new A2AClient({ endpoint, timeout: 60000, auth, featureFlags });
     a2aClients.set(endpoint, client);
-  } else if (auth) {
-    // 更新现有客户端的认证配置
-    client.updateAuth(auth);
+  } else {
+    if (auth) {
+      client.updateAuth(auth);
+    }
+    client.updateFeatureFlags(featureFlags);
   }
   return client;
 }
@@ -53,7 +56,7 @@ function getSession(conversationId: string): A2ASession {
 }
 
 export function registerIpcHandlers(): void {
-  // ===== 配置管理 =====
+  // ===== Config Management =====
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async () => {
     return configManager.get();
@@ -63,7 +66,7 @@ export function registerIpcHandlers(): void {
     return configManager.update(updates);
   });
 
-  // ===== 对话管理 =====
+  // ===== Conversation Management =====
 
   ipcMain.handle(IPC_CHANNELS.CONVERSATIONS_LIST, async () => {
     return conversationManager.listConversations();
@@ -82,7 +85,7 @@ export function registerIpcHandlers(): void {
     return conversationManager.updateConversation(id, updates);
   });
 
-  // ===== 消息管理 =====
+  // ===== Message Management =====
 
   ipcMain.handle(IPC_CHANNELS.MESSAGES_LIST, async (_, { conversationId }) => {
     return conversationManager.getMessages(conversationId);
@@ -92,7 +95,7 @@ export function registerIpcHandlers(): void {
     return conversationManager.saveMessage(conversationId, message);
   });
 
-  // ===== Debug Logs 管理 =====
+  // ===== Debug Logs Management =====
 
   ipcMain.handle(IPC_CHANNELS.DEBUG_LOGS_LIST, async (_, { conversationId }) => {
     return conversationManager.getDebugLogs(conversationId);
@@ -110,7 +113,7 @@ export function registerIpcHandlers(): void {
     return conversationManager.clearDebugLogs(conversationId);
   });
 
-  // ===== A2A 通信 =====
+  // ===== A2A Communication =====
 
   ipcMain.handle(IPC_CHANNELS.A2A_SEND, async (_, { endpoint, message, conversationId, auth }) => {
     const client = getA2AClient(endpoint, auth);
@@ -220,7 +223,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.A2A_STOP, async (_, { conversationId }) => {
-    // 遍历所有客户端尝试取消
+    // Iterate all clients to attempt cancellation
     for (const client of a2aClients.values()) {
       client.cancel(conversationId);
     }
@@ -236,7 +239,7 @@ export function registerIpcHandlers(): void {
     return client.getAgentCard();
   });
 
-  // ===== 窗口控制 (Windows/Linux 自定义标题栏) =====
+  // ===== Window Controls (Windows/Linux Custom Title Bar) =====
 
   ipcMain.handle(IPC_CHANNELS.WINDOW_MINIMIZE, async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -266,7 +269,7 @@ export function registerIpcHandlers(): void {
     return process.platform;
   });
 
-  // ===== 后端录制导入 =====
+  // ===== Backend Recording Import =====
 
   ipcMain.handle(IPC_CHANNELS.IMPORT_BACKEND_SELECT_DIR, async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -303,7 +306,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.LIVE_START_WATCH, async (event, args) => {
     debugLog('IPC LIVE_START_WATCH called, args=' + JSON.stringify(args));
-    // 如果没有传入目录，打开选择对话框
+    // If no directory provided, open file picker dialog
     let dir = args?.watchDir;
     if (!dir) {
       const window = BrowserWindow.fromWebContents(event.sender);

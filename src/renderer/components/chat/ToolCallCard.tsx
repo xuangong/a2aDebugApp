@@ -1,6 +1,6 @@
 /**
- * XML 工具调用卡片组件
- * 用于渲染 Agent 响应中的工具调用
+ * XML Tool Call Card Component
+ * Renders tool calls from Agent responses
  */
 
 import { useMemo } from 'react';
@@ -11,7 +11,7 @@ interface ToolCallCardProps {
   xmlCall: XmlCall;
 }
 
-/** 工具名称到人类可读名称的映射 */
+/** Tool name to human-readable name mapping */
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'create-file': 'Create File',
   'read-file': 'Read File',
@@ -41,7 +41,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   'run-subagent': 'Run Subagent',
 };
 
-/** 获取工具图标 */
+/** Get tool icon */
 function getToolIcon(toolName: string) {
   const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     'create-file': FileCode,
@@ -64,32 +64,32 @@ function getToolIcon(toolName: string) {
   return iconMap[toolName] || Box;
 }
 
-/** 提取主要参数用于显示 */
+/** Extract primary parameters for display */
 function extractPrimaryParam(xmlCall: XmlCall): string | null {
   const { name, attributes, content } = xmlCall;
 
-  // 文件操作 - 显示文件路径
+  // File operations - show file path
   if (['create-file', 'read-file', 'delete-file', 'full-file-rewrite'].includes(name)) {
     return attributes.file_path || attributes.file_name || null;
   }
 
-  // 命令执行 - 显示命令
+  // Command execution - show command
   if (name === 'execute-command') {
     const cmd = attributes.command || content;
     return cmd ? (cmd.length > 50 ? cmd.slice(0, 50) + '...' : cmd) : null;
   }
 
-  // 搜索 - 显示查询
+  // Search - show query
   if (['web-search', 'enterprise-search'].includes(name)) {
     return attributes.query || null;
   }
 
-  // URL 导航
+  // URL navigation
   if (name === 'browser-navigate-to') {
     return attributes.url || null;
   }
 
-  // str-replace - 显示文件路径
+  // str-replace - show file path
   if (name === 'str-replace') {
     return attributes.file_path || null;
   }
@@ -97,7 +97,7 @@ function extractPrimaryParam(xmlCall: XmlCall): string | null {
   return null;
 }
 
-/** 工具调用卡片 - 已完成状态 */
+/** Tool call card - completed state */
 export function ToolCallCard({ xmlCall }: ToolCallCardProps) {
   const Icon = getToolIcon(xmlCall.name);
   const displayName = TOOL_DISPLAY_NAMES[xmlCall.name] || xmlCall.name;
@@ -117,7 +117,7 @@ export function ToolCallCard({ xmlCall }: ToolCallCardProps) {
   );
 }
 
-/** 流式工具调用卡片 - 进行中状态 */
+/** Streaming tool call card - in-progress state */
 export function StreamingToolCallCard({ xmlCall }: ToolCallCardProps) {
   const Icon = getToolIcon(xmlCall.name);
   const displayName = TOOL_DISPLAY_NAMES[xmlCall.name] || xmlCall.name;
@@ -137,12 +137,12 @@ export function StreamingToolCallCard({ xmlCall }: ToolCallCardProps) {
   );
 }
 
-/** 工具调用详情展开卡片 - 用于 complete/ask 等需要展示内容的工具 */
+/** Tool call detail expandable card - for tools like complete/ask that display content */
 export function ToolCallDetailCard({ xmlCall }: ToolCallCardProps) {
   const Icon = getToolIcon(xmlCall.name);
   const displayName = TOOL_DISPLAY_NAMES[xmlCall.name] || xmlCall.name;
 
-  // 特殊处理 complete 标签 - 显示其内容
+  // Special handling for complete tag - show its content
   const hasContent = xmlCall.content && xmlCall.content.trim().length > 0;
 
   return (
@@ -168,12 +168,12 @@ interface ToolCallRendererProps {
   parsingXmlCall?: XmlCall;
 }
 
-/** 渲染工具调用列表 */
+/** Render tool call list */
 export function ToolCallRenderer({ xmlCalls, parsingXmlCall }: ToolCallRendererProps) {
   const renderedCalls = useMemo(() => {
     const elements: React.ReactNode[] = [];
 
-    // 渲染已完成的调用
+    // Render completed calls
     for (const call of xmlCalls) {
       if (call.name === 'complete' || call.name === 'ask') {
         elements.push(<ToolCallDetailCard key={`${call.toolCallId || call.name}-${call.offsetInText}`} xmlCall={call} />);
@@ -182,7 +182,7 @@ export function ToolCallRenderer({ xmlCalls, parsingXmlCall }: ToolCallRendererP
       }
     }
 
-    // 渲染正在解析的调用
+    // Render calls being parsed
     if (parsingXmlCall) {
       if (parsingXmlCall.name === 'complete' || parsingXmlCall.name === 'ask') {
         elements.push(<ToolCallDetailCard key="parsing" xmlCall={parsingXmlCall} />);

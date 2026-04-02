@@ -1,5 +1,5 @@
 /**
- * 配置管理器
+ * Config Manager
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'fs';
@@ -13,6 +13,7 @@ const CONFIG_PATH = join(APP_DATA_DIR, 'config.json');
 const DEFAULT_CONFIG: AppConfig = {
   defaultEndpoint: 'http://localhost:8000/a2a/',
   theme: 'dark',
+  featureFlags: 'enableA2A&enableNativeToolCall',
 };
 
 export class ConfigManager {
@@ -29,7 +30,7 @@ export class ConfigManager {
         return { ...DEFAULT_CONFIG, ...JSON.parse(content) };
       }
     } catch {
-      // 忽略错误，使用默认配置
+      // Ignore errors, use default config
     }
     return { ...DEFAULT_CONFIG };
   }

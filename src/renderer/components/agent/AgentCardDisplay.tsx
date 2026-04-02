@@ -1,5 +1,5 @@
 /**
- * Agent Card 展示组件
+ * Agent Card Display Component
  * Apple Design System
  */
 

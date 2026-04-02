@@ -1,7 +1,7 @@
 /**
- * XML 流式解析器 - 简化版
- * 用于解析 Agent 响应中的 XML 工具调用标签
- * 移植自 frontend/src/lib/xml-streaming-parser.ts
+ * XML Streaming Parser - Simplified
+ * Parses XML tool call tags in Agent responses
+ * Ported from frontend/src/lib/xml-streaming-parser.ts
  */
 
 enum ParseState {
@@ -45,7 +45,7 @@ interface ParseContext {
   closingTagBuffer: string;
 }
 
-/** 注册的工具标签名 - 从 frontend 移植 */
+/** Registered tool tag names - ported from frontend */
 const REGISTERED_TAGS: string[] = [
   "ask",
   "complete",
@@ -125,8 +125,8 @@ const REGISTERED_TAGS: string[] = [
 const WHITESPACE_REGEX = /\s/;
 
 /**
- * XML 流式解析器
- * 使用基于栈的状态机来解析流式 XML 数据
+ * XML Streaming Parser
+ * Uses a stack-based state machine to parse streaming XML data
  */
 export class XmlStreamingParser {
   private registeredTags: Set<string> = new Set();
@@ -167,13 +167,13 @@ export class XmlStreamingParser {
     if (this.registeredTags.has(this.context.tagName)) {
       const attributes = { ...this.context.attributes };
 
-      // 如果正在解析属性名，添加到 attributes
+      // If parsing attribute name, add to attributes
       if (this.context.currentAttributeName) {
         attributes[this.context.currentAttributeName] =
           attributes[this.context.currentAttributeName] || "";
       }
 
-      // 计算正在解析的 XML 片段
+      // Calculate the XML fragment being parsed
       const rawXml = this.buffer.slice(
         this.context.currentXmlStartPos!,
         this.position
@@ -312,7 +312,7 @@ export class XmlStreamingParser {
       this.resetContext();
       this.position++;
     } else {
-      // 不是自闭合标签，回退到 TEXT
+      // Not a self-closing tag, fall back to TEXT
       this.textContent += this.buffer.slice(
         this.context.currentXmlStartPos,
         this.position
@@ -340,14 +340,14 @@ export class XmlStreamingParser {
     while (this.position < this.buffer.length) {
       const char = this.buffer[this.position];
 
-      // 特殊处理：遇到新的 '<' 时，说明当前闭合标签不正确
-      // 需要检查是否是新的注册标签开始
+      // Special handling: encountering a new '<' means current closing tag is incorrect
+      // Need to check if this is the start of a new registered tag
       if (char === '<') {
-        // 先把之前累积的错误闭合标签加回 content
+        // First add back the accumulated incorrect closing tag to content
         this.context.content += "<" + this.context.closingTagBuffer;
         this.context.closingTagBuffer = "";
 
-        // 开始检查新标签
+        // Start checking new tag
         this.context.parseState = ParseState.CLOSING_TAG;
         this.position++;
         return;
@@ -356,10 +356,10 @@ export class XmlStreamingParser {
       this.context.closingTagBuffer += char;
       this.position++;
 
-      // 检查是否是正确的闭合标签
+      // Check if this is the correct closing tag
       const expectedClosingTag = `/${this.context.tagName}>`;
       if (this.context.closingTagBuffer === expectedClosingTag) {
-        // 完成解析
+        // Parsing complete
         const rawXml = this.buffer.slice(
           this.context.currentXmlStartPos!,
           this.position
@@ -377,20 +377,20 @@ export class XmlStreamingParser {
         return;
       }
 
-      // 检查是否不可能是闭合标签
+      // Check if it cannot be a closing tag
       if (!expectedClosingTag.startsWith(this.context.closingTagBuffer)) {
-        // 检查是否是另一个注册的标签开始
-        // closingTagBuffer 不包含开头的 '<'，所以我们需要检查它是否是另一个注册标签的开头
+        // Check if this is the start of another registered tag
+        // closingTagBuffer doesn't include the leading '<', so we need to check if it's the start of another registered tag
         const potentialNewTag = this.context.closingTagBuffer;
 
-        // 检查是否是完整的注册标签名后跟着空格、>、/ 或换行
-        // 例如 "web-search " 或 "ask>" 是有效的，但 "a " 不是（因为没有注册标签叫 "a"）
+        // Check if it's a complete registered tag name followed by space, >, /, or newline
+        // e.g., "web-search " or "ask>" are valid, but "a " is not (no registered tag named "a")
         if (this.isCompleteRegisteredTag(potentialNewTag)) {
-          // 是新的注册标签，隐式关闭当前标签
-          // 保存当前未完成的标签（streaming = true）
+          // New registered tag, implicitly close current tag
+          // Save current incomplete tag (streaming = true)
           const rawXml = this.buffer.slice(
             this.context.currentXmlStartPos!,
-            this.position - this.context.closingTagBuffer.length - 1 // 不包括 '<' 和 closingTagBuffer
+            this.position - this.context.closingTagBuffer.length - 1 // Excluding '<' and closingTagBuffer
           );
           this.parsedXmlCalls.push({
             name: this.context.tagName,
@@ -398,20 +398,20 @@ export class XmlStreamingParser {
             content: this.context.content,
             attributes: { ...this.context.attributes },
             offsetInText: this.context.currentXmlStartPos!,
-            streaming: true, // 标记为流式（未正确关闭）
+            streaming: true, // Marked as streaming (not properly closed)
             rawXml: rawXml,
           });
 
-          // 回退 position 到新标签的开始位置（'<' 之后）
+          // Reset position to the start of new tag (after '<')
           this.position = this.position - this.context.closingTagBuffer.length;
 
-          // 重置 context 并开始解析新标签
+          // Reset context and start parsing new tag
           this.context = {
             parseState: ParseState.TAG,
             attributes: {},
             content: "",
             tagName: "",
-            currentXmlStartPos: this.position - 1, // '<' 的位置
+            currentXmlStartPos: this.position - 1, // Position of '<'
             currentAttributeName: "",
             currentAttributeQuoteChar: "",
             isEscaped: false,
@@ -420,13 +420,13 @@ export class XmlStreamingParser {
           return;
         }
 
-        // 检查是否还可能成为注册标签（继续累积）
+        // Check if it could still become a registered tag (continue accumulating)
         if (this.isRegisteredTagPrefix(potentialNewTag)) {
-          // 继续累积，不做任何处理
+          // Continue accumulating, no action needed
           continue;
         }
 
-        // 不是闭合标签也不是新的注册标签，将已解析的内容加回 content
+        // Not a closing tag nor a new registered tag, add parsed content back to content
         this.context.content += "<" + this.context.closingTagBuffer;
         this.context.closingTagBuffer = "";
         this.context.parseState = ParseState.CONTENT;
@@ -436,24 +436,24 @@ export class XmlStreamingParser {
   }
 
   /**
-   * 检查给定字符串是否是一个完整的注册标签名后跟终止字符
-   * 例如 "web-search " 或 "ask>" 返回 true
-   * 但 "a " 或 "we" 返回 false
+   * Check if the given string is a complete registered tag name followed by a terminator
+   * e.g., "web-search " or "ask>" returns true
+   * but "a " or "we" returns false
    */
   private isCompleteRegisteredTag(buffer: string): boolean {
     if (buffer.startsWith('/')) {
       return false;
     }
 
-    // 检查 buffer 是否以注册标签名开头，后面跟着空格、>、/ 或换行
+    // Check if buffer starts with a registered tag name followed by space, >, /, or newline
     for (const tag of this.registeredTags) {
       if (buffer.startsWith(tag)) {
         const nextChar = buffer[tag.length];
         if (nextChar === undefined) {
-          // buffer 正好是标签名，没有后续字符，继续等待
+          // Buffer is exactly the tag name with no trailing char, keep waiting
           return false;
         }
-        // 标签名后面必须跟着空格、>、/ 或换行才算完整
+        // Tag name must be followed by space, >, /, or newline to be complete
         if (WHITESPACE_REGEX.test(nextChar) || nextChar === '>' || nextChar === '/') {
           return true;
         }
@@ -463,10 +463,10 @@ export class XmlStreamingParser {
   }
 
   /**
-   * 检查给定字符串是否是某个注册标签的前缀
+   * Check if the given string is a prefix of a registered tag
    */
   private isRegisteredTagPrefix(prefix: string): boolean {
-    // 需要检查的是不以 '/' 开头的标签（非闭合标签）
+    // Check tags that don't start with '/' (non-closing tags)
     if (prefix.startsWith('/')) {
       return false;
     }
@@ -498,9 +498,9 @@ export class XmlStreamingParser {
       }
 
       if (WHITESPACE_REGEX.test(char)) {
-        // 跳过空白
+        // Skip whitespace
         if (this.context.currentAttributeName) {
-          // 已有属性名，但没有值
+          // Has attribute name but no value
           this.context.attributes[this.context.currentAttributeName] = "";
           this.context.currentAttributeName = "";
         }
@@ -593,9 +593,9 @@ export class XmlStreamingParser {
 }
 
 /**
- * 解析文本内容中的 XML 调用
- * @param text 要解析的文本
- * @returns 解析结果，包含纯文本和 XML 调用列表
+ * Parse XML calls from text content
+ * @param text The text to parse
+ * @returns Parse result containing plain text and XML call list
  */
 export function parseXmlContent(text: string): {
   plainText: string;

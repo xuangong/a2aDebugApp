@@ -1,6 +1,6 @@
 /**
- * 消息输入组件
- * 支持多个对话同时 streaming，切换对话不中断后台 streaming
+ * Message Input Component
+ * Supports concurrent streaming across conversations, switching doesn't interrupt background streaming
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -121,7 +121,7 @@ export function ChatInput() {
     });
   }, [setMessagesMap]);
 
-  // 添加调试日志（同时保存到文件，per-conversation）
+  // Add debug log (also persisted to file, per-conversation)
   const addDebugLog = useCallback((conversationId: string, entry: Omit<JsonRpcLogEntry, 'id' | 'timestamp'>) => {
     const logEntry: JsonRpcLogEntry = {
       id: uuidv4(),
@@ -135,7 +135,7 @@ export function ChatInput() {
       return newMap;
     });
 
-    // 异步保存到文件
+    // Persist to file asynchronously
     window.electronAPI.saveDebugLog(conversationId, logEntry).catch(console.error);
   }, [setDebugLogsMap]);
 
@@ -475,6 +475,27 @@ export function ChatInput() {
       window.electronAPI.updateConversation(conversationId, { title: newTitle }).catch(console.error);
     }
 
+    // Build A2A request body before saving message so rawRequest is persisted
+    const auth = authConfig.bearerToken || authConfig.accountId ? authConfig : undefined;
+    const requestEndpoint = currentConversation.endpoint || endpoint;
+    const metadata = auth?.accountId ? { accountId: auth.accountId } : undefined;
+    const requestBody: A2ARequest = {
+      jsonrpc: '2.0',
+      method: 'message/stream',
+      params: {
+        message: {
+          role: 'user',
+          kind: 'message',
+          messageId: uuidv4(),
+          parts: [{ kind: 'text', type: 'text', text: userMessage.content }],
+          ...(conversationId && { contextId: conversationId }),
+        },
+        ...(metadata && { metadata }),
+      },
+      id: `req-${Date.now()}`,
+    };
+    userMessage.rawRequest = requestBody;
+
     // Add user message to the conversation
     addMessageToConversation(conversationId, userMessage);
     await window.electronAPI.saveMessage(conversationId, userMessage);
@@ -494,26 +515,6 @@ export function ChatInput() {
     }));
 
     try {
-      const auth = authConfig.bearerToken || authConfig.accountId ? authConfig : undefined;
-      const requestEndpoint = currentConversation.endpoint || endpoint;
-
-      const metadata = auth?.accountId ? { accountId: auth.accountId } : undefined;
-      const requestBody: A2ARequest = {
-        jsonrpc: '2.0',
-        method: 'message/stream',
-        params: {
-          message: {
-            role: 'user',
-            kind: 'message',
-            messageId: uuidv4(),
-            parts: [{ kind: 'text', type: 'text', text: userMessage.content }],
-            ...(conversationId && { contextId: conversationId }),
-          },
-          ...(metadata && { metadata }),
-        },
-        id: `req-${Date.now()}`,
-      };
-
       addDebugLog(conversationId, {
         direction: 'request',
         messageId: userMessage.id,

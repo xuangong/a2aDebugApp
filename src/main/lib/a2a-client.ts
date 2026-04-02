@@ -1,8 +1,8 @@
 /**
- * A2A HTTP 客户端
+ * A2A HTTP Client
  *
- * 实现 A2A 0.3.0 协议的客户端通信
- * 使用 Electron net 模块确保打包后网络请求正常工作
+ * Implements A2A 0.3.0 protocol client communication
+ * Uses Electron net module to ensure network requests work after packaging
  */
 
 import { net } from 'electron';
@@ -21,8 +21,10 @@ import { extractContextIdFromResult, isFinalResult } from '../../shared/types';
 export interface A2AClientConfig {
   endpoint: string;
   timeout?: number;
-  /** 认证配置 */
+  /** Auth config */
   auth?: AuthConfig;
+  /** Feature flags (x-fd-features header value) */
+  featureFlags?: string;
 }
 
 export class A2AClient {
@@ -34,22 +36,31 @@ export class A2AClient {
   }
 
   /**
-   * 更新认证配置
+   * Update auth config
    */
   updateAuth(auth: AuthConfig | undefined): void {
     this.config.auth = auth;
   }
 
   /**
-   * 构建请求头（包含认证）
+   * Update feature flags config
+   */
+  updateFeatureFlags(flags: string | undefined): void {
+    this.config.featureFlags = flags;
+  }
+
+  /**
+   * Build request headers (including auth)
    */
   private buildHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
+    const featureFlags = this.config.featureFlags || 'enableA2A&enableNativeToolCall';
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'x-fd-features': featureFlags,
       ...additionalHeaders,
     };
 
-    // 添加 Bearer Token
+    // Add Bearer Token
     if (this.config.auth?.bearerToken) {
       headers['Authorization'] = `Bearer ${this.config.auth.bearerToken}`;
     }
@@ -58,11 +69,11 @@ export class A2AClient {
   }
 
   /**
-   * 获取 Agent Card
-   * Agent Card 位于 {baseUrl}/.well-known/agent.json
+   * Get Agent Card
+   * Agent Card is located at {baseUrl}/.well-known/agent.json
    */
   async getAgentCard(): Promise<AgentCard> {
-    // 从 endpoint 提取 baseUrl
+    // Extract baseUrl from endpoint
     const url = new URL(this.config.endpoint);
     const agentCardUrl = `${url.origin}${url.pathname.replace(/\/$/, '')}/.well-known/agent.json`;
 
@@ -87,7 +98,7 @@ export class A2AClient {
   }
 
   /**
-   * 发送非流式消息
+   * Send non-streaming message
    */
   async send(message: string, session: A2ASession): Promise<A2AResponse> {
     const request = this.buildRequest('message/send', message, session);
@@ -107,7 +118,7 @@ export class A2AClient {
   }
 
   /**
-   * 发送流式消息
+   * Send streaming message
    */
   async *stream(
     message: string,
@@ -134,7 +145,7 @@ export class A2AClient {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // SSE 流解析
+      // SSE stream parsing
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -143,7 +154,7 @@ export class A2AClient {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // 处理 buffer 中剩余的数据
+          // Process remaining data in buffer
           if (buffer.trim()) {
             const event = buffer.trim();
             if (event.startsWith('data: ')) {
@@ -151,7 +162,7 @@ export class A2AClient {
               try {
                 const parsed = JSON.parse(jsonStr);
                 const data: A2AResult = parsed.result || parsed;
-                // 提取 contextId（支持 message 和 status-update 两种格式）
+                // Extract contextId (supports both message and status-update formats)
                 const extractedContextId = extractContextIdFromResult(data);
                 if (extractedContextId) {
                   contextId = extractedContextId;
@@ -168,7 +179,7 @@ export class A2AClient {
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
 
-        // SSE 事件使用双换行符分隔 (可以是 \r\n\r\n, \n\n, 或 \r\r)
+        // SSE events are separated by double newlines (\r\n\r\n, \n\n, or \r\r)
         const events = buffer.split(/\r\n\r\n|\n\n|\r\r/);
         buffer = events.pop() || '';
 
@@ -180,10 +191,10 @@ export class A2AClient {
           try {
             const parsed = JSON.parse(jsonStr);
 
-            // SSE 数据可能是完整的 JSON-RPC 响应或直接的 result
+            // SSE data may be a complete JSON-RPC response or a direct result
             const data: A2AResult = parsed.result || parsed;
 
-            // 提取 contextId（支持 message 和 status-update 两种格式）
+            // Extract contextId (supports both message and status-update formats)
             const extractedContextId = extractContextIdFromResult(data);
             if (extractedContextId) {
               contextId = extractedContextId;
@@ -191,7 +202,7 @@ export class A2AClient {
 
             yield { type: 'chunk', data };
 
-            // 检查是否为最终消息（使用辅助函数支持两种格式）
+            // Check if this is the final message (using helper for both formats)
             if (isFinalResult(data)) {
               yield { type: 'complete', contextId };
               return;
@@ -216,7 +227,7 @@ export class A2AClient {
   }
 
   /**
-   * 取消流式请求
+   * Cancel streaming request
    */
   cancel(conversationId: string): void {
     const controller = this.abortControllers.get(conversationId);
@@ -227,7 +238,7 @@ export class A2AClient {
   }
 
   /**
-   * 构建 A2A 请求
+   * Build A2A request
    */
   private buildRequest(
     method: 'message/send' | 'message/stream',
@@ -242,15 +253,15 @@ export class A2AClient {
   }
 
   /**
-   * 构建带有自定义 Parts 数组的 A2A 请求
-   * 支持 TextPart, DataPart, FilePart 的任意组合
+   * Build A2A request with custom Parts array
+   * Supports any combination of TextPart, DataPart, FilePart
    */
   private buildRequestWithParts(
     method: 'message/send' | 'message/stream',
     parts: A2APart[],
     session: A2ASession
   ): A2ARequest {
-    // 构建 metadata（如果有 accountId）
+    // Build metadata (if accountId present)
     const metadata = this.config.auth?.accountId
       ? { accountId: this.config.auth.accountId }
       : undefined;

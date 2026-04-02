@@ -1,6 +1,6 @@
 /**
- * Task 状态栏组件
- * 显示当前 context 中的 task 列表和状态
+ * Task Status Bar Component
+ * Displays task list and status in the current context
  */
 
 import { useAtomValue } from 'jotai';
@@ -8,7 +8,7 @@ import { Activity, CheckCircle, XCircle, Clock, MessageSquare, Loader2 } from 'l
 import { tasksAtom, currentTaskAtom, type TaskInfo } from '../../atoms/chat-atoms';
 import type { TaskState } from '../../../shared/types';
 
-/** Task 状态对应的图标和颜色 */
+/** Task state icons and colors */
 const taskStateConfig: Record<TaskState, { icon: typeof Activity; color: string; label: string }> = {
   submitted: { icon: Clock, color: 'text-gray-400', label: 'Submitted' },
   working: { icon: Loader2, color: 'text-blue-500', label: 'Working' },
@@ -29,7 +29,7 @@ export function TaskStatusBar() {
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-      {/* Task 列表（显示为小圆点） */}
+      {/* Task list (shown as dots) */}
       <div className="flex items-center gap-1">
         <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Tasks:</span>
         {tasks.map((task, index) => {
@@ -51,7 +51,7 @@ export function TaskStatusBar() {
         })}
       </div>
 
-      {/* 当前 Task 状态 */}
+      {/* Current task status */}
       {currentTask && (
         <div className="flex items-center gap-2 ml-auto">
           <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -67,7 +67,7 @@ export function TaskStatusBar() {
   );
 }
 
-/** Task 状态徽章 */
+/** Task status badge */
 function TaskStateBadge({ state }: { state: TaskState }) {
   const config = taskStateConfig[state];
   const Icon = config.icon;
