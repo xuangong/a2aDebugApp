@@ -149,10 +149,12 @@ export function AgentCardDisplay({ agentCard, loading, error }: AgentCardDisplay
         )}
       </div>
 
-      {/* URL */}
-      <div className="text-apple-xs text-apple-gray-400 truncate">
-        {agentCard.url}
-      </div>
+      {/* URL - hide if empty or just a path like "/" */}
+      {agentCard.url && agentCard.url.trim().length > 1 && !/^\/+$/.test(agentCard.url.trim()) && (
+        <div className="text-apple-xs text-apple-gray-400 truncate">
+          {agentCard.url}
+        </div>
+      )}
     </div>
   );
 }

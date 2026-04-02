@@ -60,11 +60,11 @@ export function ChatHeader() {
       <div className="h-11 titlebar-drag" />
 
       {/* Content area - Apple style header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-apple-gray-300/60 dark:border-[#38383A]">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-apple-gray-300/60 dark:border-[#38383A] gap-3">
+        <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
           {/* Agent info */}
           {agentCard ? (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-shrink-0">
               <div className="w-9 h-9 bg-apple-blue rounded-apple flex items-center justify-center">
                 <Bot className="w-5 h-5 text-white" />
               </div>
@@ -78,13 +78,13 @@ export function ChatHeader() {
               </div>
             </div>
           ) : (
-            <h1 className="text-apple-sm font-semibold text-apple-gray-900 dark:text-apple-gray-100 truncate max-w-xs">
+            <h1 className="text-apple-sm font-semibold text-apple-gray-900 dark:text-apple-gray-100 truncate flex-shrink-0 max-w-xs">
               {currentConversation.title}
             </h1>
           )}
 
-          {/* Endpoint */}
-          <span className="text-apple-xs text-apple-gray-500 truncate max-w-xs hidden sm:block">
+          {/* Endpoint - naturally hidden when space is tight */}
+          <span className="text-apple-xs text-apple-gray-500 truncate min-w-0 flex-shrink">
             {currentConversation.endpoint || endpoint}
           </span>
 
@@ -92,7 +92,7 @@ export function ChatHeader() {
           <button
             onClick={() => setShowContextId(!showContextId)}
             className={`
-              flex items-center gap-1.5 px-2.5 py-1 rounded-apple-sm text-apple-xs font-medium transition-all duration-apple
+              flex items-center gap-1.5 px-2.5 py-1 rounded-apple-sm text-apple-xs font-medium transition-all duration-apple flex-shrink-0
               ${currentConversation.id
                 ? 'bg-apple-green/10 text-apple-green hover:bg-apple-green/15'
                 : 'bg-apple-gray-200 dark:bg-[#38383A] text-apple-gray-500'
@@ -105,12 +105,12 @@ export function ChatHeader() {
           </button>
         </div>
 
-        <div className="flex items-center gap-2 titlebar-no-drag">
+        <div className="flex items-center gap-2 titlebar-no-drag flex-shrink-0">
           {/* Connection settings button */}
           <button
             onClick={() => setShowConnectionPanel(!showConnectionPanel)}
             className={`btn-apple-icon ${showConnectionPanel ? 'bg-apple-blue/10 text-apple-blue' : ''}`}
-            title="Server Connection"
+            data-tooltip="Settings"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -119,36 +119,33 @@ export function ChatHeader() {
           <button
             onClick={toggleSearch}
             className={`btn-apple-icon ${searchVisible ? 'bg-apple-blue/10 text-apple-blue' : ''}`}
-            title="Search messages (Ctrl+F)"
+            data-tooltip="Search"
           >
             <Search className="w-4 h-4" />
           </button>
 
-          {/* View switcher - Apple Segmented Control */}
+          {/* View switcher - Apple Segmented Control (icon only, tooltip on hover) */}
           <div className="apple-segmented">
             <button
               onClick={() => setViewMode('rendered')}
               className={`apple-segment flex items-center gap-1.5 ${viewMode === 'rendered' ? 'active' : ''}`}
-              title="Rendered view"
+              data-tooltip="Rendered"
             >
               <Eye className="w-3 h-3" />
-              <span className="hidden lg:inline">Rendered</span>
             </button>
             <button
               onClick={() => setViewMode('raw')}
               className={`apple-segment flex items-center gap-1.5 ${viewMode === 'raw' ? 'active' : ''}`}
-              title="Raw JSON view"
+              data-tooltip="Raw"
             >
               <Code className="w-3 h-3" />
-              <span className="hidden lg:inline">Raw</span>
             </button>
             <button
               onClick={() => setViewMode('content')}
               className={`apple-segment flex items-center gap-1.5 ${viewMode === 'content' ? 'active' : ''}`}
-              title="Raw content view"
+              data-tooltip="Content"
             >
               <FileText className="w-3 h-3" />
-              <span className="hidden lg:inline">Content</span>
             </button>
           </div>
         </div>

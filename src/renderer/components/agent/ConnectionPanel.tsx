@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
-import { Server, RefreshCw, Check, X, Link, Key, User, HelpCircle, Clock, Clipboard, Settings } from 'lucide-react';
+import { Server, RefreshCw, Check, X, Link, Key, User, HelpCircle, Clock, Settings, Bot } from 'lucide-react';
 import {
   endpointAtom,
   agentCardAtom,
@@ -54,10 +54,9 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAuthFields, setShowAuthFields] = useState(false);
   const [showFeatureFlags, setShowFeatureFlags] = useState(false);
+  const [showAgentCard, setShowAgentCard] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [tokenExpiresOn, setTokenExpiresOn] = useState<number | null>(authConfig.expiresOn || null);
-  const [jsonInput, setJsonInput] = useState('');
-  const [parseError, setParseError] = useState<string | null>(null);
 
   // Sync tempBearerToken with authConfig on mount and when authConfig changes
   useEffect(() => {
@@ -93,136 +92,6 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
   };
 
   const endpointValidation = validateEndpoint(tempEndpoint);
-
-  // Parse pasted JSON
-  const handleParseJson = () => {
-    setParseError(null);
-    try {
-      let data = JSON.parse(jsonInput.trim());
-
-      // Unwrap SocietasSsoResult wrapper: { result: { accessToken, ... }, timestamp }
-      if (data.result && typeof data.result === 'object' && data.result.accessToken) {
-        data = data.result;
-      }
-
-      // Auto-detect multiple token formats:
-      // Format 1: SocietasSsoResult - MSAL AuthenticationResult { accessToken, idToken, expiresOn, scopes, ... }
-      // Format 2: MSAL cache idtoken - { credentialType: "IdToken", secret: "..." }
-      // Format 3: MSAL cache accesstoken - { credentialType: "AccessToken", secret: "...", target: "..." }
-      // Format 4: SocietasCacheToken - { access_token: "..." }
-
-      let token = '';
-      let parsedExpiresOn: number | null = null;
-
-      if (data.accessToken && data.idToken && data.scopes) {
-        // Format 1: SocietasSsoResult (MSAL AuthenticationResult)
-        // Validate scopes contain Societas.Access
-        const scopes = Array.isArray(data.scopes) ? data.scopes : [];
-        const hasSocietasScope = scopes.some((s: string) => s.includes('Societas.Access'));
-        if (!hasSocietasScope) {
-          setParseError(`Wrong token scopes: ${JSON.stringify(scopes)}. Expected scope containing "Societas.Access".`);
-          return;
-        }
-
-        // Detect if accessToken is JWE (encrypted) — JWE has 5 dot-separated parts,
-        // or the header alg is an encryption algorithm (RSA-OAEP, A256KW, etc.)
-        // Localhost backend can't decrypt JWE, so use idToken instead.
-        let useIdToken = false;
-        try {
-          const headerB64 = data.accessToken.split('.')[0];
-          const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
-          if (header.alg && (header.alg.startsWith('RSA-OAEP') || header.alg.startsWith('A') || header.alg === 'dir')) {
-            useIdToken = true;
-          }
-        } catch {
-          // If header parse fails, check dot-count: JWE has 5 parts, JWS has 3
-          if (data.accessToken.split('.').length === 5) {
-            useIdToken = true;
-          }
-        }
-
-        if (useIdToken) {
-          token = data.idToken;
-          setParseError(null);
-          // Show info that idToken is being used (not an error, just informational)
-          console.log('[Auth] accessToken is JWE (encrypted), using idToken for localhost compatibility');
-        } else {
-          token = data.accessToken;
-        }
-
-        // Parse ISO date string or epoch
-        if (data.expiresOn) {
-          if (typeof data.expiresOn === 'string' && data.expiresOn.includes('T')) {
-            // ISO date string: "2026-04-02T14:03:05.000Z"
-            parsedExpiresOn = Math.floor(new Date(data.expiresOn).getTime() / 1000);
-          } else {
-            parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
-          }
-        }
-      } else if (data.credentialType === 'IdToken' && data.secret) {
-        // Format 2: MSAL idtoken cache entry
-        token = data.secret;
-      } else if (data.access_token) {
-        // Format 4: SocietasCacheToken
-        token = data.access_token;
-      } else if (data.secret) {
-        // Format 3: MSAL accesstoken cache entry
-        if (data.credentialType === 'AccessToken' && data.target) {
-          if (!data.target.includes('Societas.Access')) {
-            setParseError(`Wrong token target: "${data.target}". Please use the accesstoken with target containing "Societas.Access".`);
-            return;
-          }
-        }
-        token = data.secret;
-      } else {
-        setParseError('Unrecognized format. Supported: SocietasSsoResult, MSAL cache entry (idtoken/accesstoken), or {access_token}.');
-        return;
-      }
-
-      setTempBearerToken(token);
-
-      // Extract expiration time (if not already parsed from Format 1)
-      if (!parsedExpiresOn) {
-        if (data.expiresOn) {
-          if (typeof data.expiresOn === 'string' && data.expiresOn.includes('T')) {
-            parsedExpiresOn = Math.floor(new Date(data.expiresOn).getTime() / 1000);
-          } else {
-            parsedExpiresOn = typeof data.expiresOn === 'string' ? parseInt(data.expiresOn, 10) : data.expiresOn;
-          }
-        } else if (data.expires_on) {
-          parsedExpiresOn = typeof data.expires_on === 'string' ? parseInt(data.expires_on, 10) : data.expires_on;
-        }
-      }
-
-      // If still no expiration, try extracting exp from JWT payload
-      if (!parsedExpiresOn && token) {
-        try {
-          const parts = token.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-            if (payload.exp && typeof payload.exp === 'number') {
-              parsedExpiresOn = payload.exp;
-            }
-          }
-        } catch {
-          // JWT parse failed, ignore
-        }
-      }
-
-      if (parsedExpiresOn) {
-        const now = Math.floor(Date.now() / 1000);
-        if (parsedExpiresOn <= now) {
-          setParseError('Token has already expired. Please get a new token from the browser.');
-          return;
-        }
-        setTokenExpiresOn(parsedExpiresOn);
-      }
-
-      setJsonInput('');
-    } catch {
-      setParseError('Invalid JSON format');
-    }
-  };
 
   const handleConnect = async () => {
     // Pre-connect validation
@@ -382,113 +251,32 @@ export function ConnectionPanel({ onClose }: ConnectionPanelProps) {
 
           {showAuthFields && (
             <div className="space-y-3 p-3 bg-apple-gray-50 dark:bg-[#2C2C2E] rounded-apple">
-              {/* Quick Paste JSON */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-apple-xs font-medium text-apple-gray-600 dark:text-apple-gray-400 flex items-center gap-1">
-                    <Clipboard className="w-3 h-3" />
-                    Quick Import from Browser
-                  </label>
-                  <button
-                    onClick={() => setShowHelp(!showHelp)}
-                    className="flex items-center gap-1 text-apple-xs text-apple-blue hover:underline"
-                  >
-                    <HelpCircle className="w-3 h-3" />
-                    Help
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <textarea
-                    value={jsonInput}
-                    onChange={(e) => setJsonInput(e.target.value)}
-                    placeholder='Paste the accesstoken JSON from browser LocalStorage here...'
-                    className="apple-input text-apple-xs resize-none"
-                    rows={2}
-                  />
-                  <button
-                    onClick={handleParseJson}
-                    disabled={!jsonInput.trim()}
-                    className="btn-apple text-apple-xs"
-                  >
-                    Extract
-                  </button>
-                </div>
-                {parseError && (
-                  <p className="text-apple-xs text-apple-red">{parseError}</p>
-                )}
+              {/* Help Toggle */}
+              <div className="flex items-center justify-end">
+                <button
+                  onClick={() => setShowHelp(!showHelp)}
+                  className="flex items-center gap-1 text-apple-xs text-apple-blue hover:underline"
+                >
+                  <HelpCircle className="w-3 h-3" />
+                  How to get token
+                </button>
               </div>
 
-              {/* Help Instructions */}
+              {/* Help Instructions - Network Tab only */}
               {showHelp && (
-                <div className="p-3 bg-apple-blue/5 rounded-apple border border-apple-blue/20 text-apple-xs space-y-3">
+                <div className="p-3 bg-apple-blue/5 rounded-apple border border-apple-blue/20 text-apple-xs space-y-2">
                   <p className="font-medium text-apple-blue">
-                    How to get Token from Browser:
+                    How to get Bearer Token from Browser:
                   </p>
-
-                  {/* Method 1: SocietasSsoResult */}
-                  <div className="space-y-2 p-2 bg-apple-green/5 rounded-apple border border-apple-green/20">
-                    <p className="font-medium text-apple-green">⭐ Method 1: SocietasSsoResult</p>
-                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      <li>Open Societas frontend and login</li>
-                      <li>DevTools (F12) → Application → Local Storage</li>
-                      <li>Find key <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">SocietasSsoResult</code></li>
-                      <li>Copy the entire JSON value → Paste → Extract → Connect</li>
-                    </ol>
-                    <p className="text-apple-gray-500 text-[10px]">✓ Available after SSO silent login (test/prod). May not exist on localhost.</p>
-                  </div>
-
-                  {/* Method 2: Browser Console (Recommended for localhost) */}
-                  <div className="space-y-2 p-2 bg-apple-orange/5 rounded-apple border border-apple-orange/20">
-                    <p className="font-medium text-apple-orange">🏠 Method 2: Browser Console (Recommended for localhost)</p>
-                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      When MSAL cache is encrypted or <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">SocietasSsoResult</code> is not available:
-                    </p>
-                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      <li>Open Societas frontend (localhost:3000) and login</li>
-                      <li>DevTools (F12) → Console</li>
-                      <li>Paste the script below and press Enter:</li>
-                    </ol>
-                    <div className="relative mt-1.5">
-                      <pre className="text-[10px] bg-[#1C1C1E] text-green-400 p-2 rounded-apple overflow-x-auto whitespace-pre leading-relaxed select-all">{`const m = await __msalInstance.acquireTokenSilent({
-  account: __msalInstance.getActiveAccount(),
-  scopes: ["api://4d206cf7-2973-4ae3-b59c-dffecbaf1424/Societas.Access"]
-});
-copy(JSON.stringify({
-  accessToken: m.accessToken,
-  idToken: m.idToken,
-  scopes: m.scopes,
-  expiresOn: m.expiresOn
-}))`}</pre>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(
-                            `const m = await __msalInstance.acquireTokenSilent({ account: __msalInstance.getActiveAccount(), scopes: ["api://4d206cf7-2973-4ae3-b59c-dffecbaf1424/Societas.Access"] }); copy(JSON.stringify({ accessToken: m.accessToken, idToken: m.idToken, scopes: m.scopes, expiresOn: m.expiresOn }))`
-                          );
-                        }}
-                        className="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] bg-apple-gray-600/50 hover:bg-apple-gray-600 text-apple-gray-300 rounded transition-colors"
-                        title="Copy to clipboard"
-                      >
-                        Copy
-                      </button>
-                    </div>
-                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2 text-[10px] mt-1">
-                      4. Paste the copied JSON → Extract → Connect
-                    </p>
-                    <p className="text-apple-gray-500 text-[10px]">✓ Token is copied to clipboard automatically.</p>
-                  </div>
-
-                  {/* Method 3: MSAL Cache Entries (Fallback) */}
-                  <div className="space-y-2 p-2 bg-apple-purple/5 rounded-apple border border-apple-purple/20">
-                    <p className="font-medium text-apple-purple">📦 Method 3: MSAL Cache Entries (Legacy)</p>
-                    <p className="text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      If MSAL cache is not encrypted (older environments):
-                    </p>
-                    <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
-                      <li><strong>Local dev:</strong> Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">idtoken</code>, copy JSON with key containing <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">-idtoken-</code></li>
-                      <li><strong>Production:</strong> Filter by <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">accesstoken</code>, find JSON where <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">target</code> contains <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">Societas.Access</code></li>
-                    </ol>
-                    <p className="text-apple-gray-500 text-[10px]">Note: MSAL cache may be fully encrypted — use Method 2 if entries show as {"id","nonce","data"}</p>
-                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-apple-gray-600 dark:text-apple-gray-400 pl-2">
+                    <li>Open Societas frontend and login</li>
+                    <li>DevTools (F12) → Network tab</li>
+                    <li>Do any action that triggers an API call (e.g. send a message)</li>
+                    <li>Find any request to the backend API</li>
+                    <li>In request Headers, copy the <code className="px-1 bg-apple-gray-200 dark:bg-[#38383A] rounded-apple-sm">Authorization</code> header value</li>
+                    <li>Paste into the <strong>Bearer Token</strong> field below</li>
+                  </ol>
+                  <p className="text-apple-gray-500 text-[10px]">✓ Works everywhere, no code changes needed. "Bearer " prefix is auto-stripped.</p>
                 </div>
               )}
 
@@ -532,7 +320,26 @@ copy(JSON.stringify({
                     <input
                       type="password"
                       value={tempBearerToken}
-                      onChange={(e) => setTempBearerToken(e.target.value)}
+                      onChange={(e) => {
+                        let val = e.target.value;
+                        // Auto-strip "Bearer " prefix if pasted from Network tab
+                        if (val.startsWith('Bearer ')) {
+                          val = val.slice(7);
+                        }
+                        setTempBearerToken(val);
+                        // Try to extract expiration from JWT payload
+                        try {
+                          const parts = val.split('.');
+                          if (parts.length === 3) {
+                            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                            if (payload.exp && typeof payload.exp === 'number') {
+                              setTokenExpiresOn(payload.exp);
+                            }
+                          }
+                        } catch {
+                          // Not a valid JWT, ignore
+                        }
+                      }}
                       placeholder="Auto-filled from JSON or paste manually..."
                       className="apple-input pl-9"
                     />
@@ -607,9 +414,16 @@ copy(JSON.stringify({
         {(agentCard || loading || error) && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="text-apple-sm font-medium text-apple-gray-700 dark:text-apple-gray-300">
+              <button
+                onClick={() => setShowAgentCard(!showAgentCard)}
+                className="flex items-center gap-2 text-apple-sm font-medium text-apple-gray-700 dark:text-apple-gray-300 hover:text-apple-blue transition-colors"
+              >
+                <Bot className="w-4 h-4" />
                 Agent Card
-              </h4>
+                <span className={`text-apple-xs transition-transform ${showAgentCard ? 'rotate-180' : ''}`}>
+                  ▼
+                </span>
+              </button>
               {agentCard && (
                 <button
                   onClick={handleRefresh}
@@ -621,11 +435,13 @@ copy(JSON.stringify({
                 </button>
               )}
             </div>
-            <AgentCardDisplay
-              agentCard={agentCard!}
-              loading={loading}
-              error={error}
-            />
+            {showAgentCard && (
+              <AgentCardDisplay
+                agentCard={agentCard!}
+                loading={loading}
+                error={error}
+              />
+            )}
           </div>
         )}
 
